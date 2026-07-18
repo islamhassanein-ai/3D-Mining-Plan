@@ -1,0 +1,8 @@
+hole_id,from_depth,to_depth,grade_value,grade_unit
+DH-101,0,10,0.2,g/t
+DH-101,10,20,1.5,g/t
+DH-101,20,30,6.1,g/t
+DH-102,0,15,0.9,g/t
+DH-102,15,30,2.8,g/t
+DH-103,0,20,0.15,g/t
+DH-103,20,40,4.4,g/t

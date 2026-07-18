@@ -1,0 +1,15 @@
+{
+  "name": "mining-3d-visualizer-frontend",
+  "version": "1.0.0",
+  "description": "Gold Prospect 3D Visualization Tool Frontend",
+  "scripts": {
+    "dev": "esbuild src/scene/scene.js --bundle --outfile=dist/bundle.js --serve=8001 --servedir=. --watch",
+    "build": "esbuild src/scene/scene.js --bundle --minify --outfile=dist/bundle.js"
+  },
+  "dependencies": {
+    "three": "^0.160.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.19.11"
+  }
+}

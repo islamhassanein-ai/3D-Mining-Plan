@@ -1,0 +1,15 @@
+fastapi
+uvicorn
+sqlalchemy>=2.0
+geoalchemy2
+alembic
+pydantic
+python-jose
+pytest
+psycopg2-binary
+httpx
+python-multipart
+ezdxf
+pyshp
+reportlab
+

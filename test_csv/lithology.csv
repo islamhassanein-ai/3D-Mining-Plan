@@ -1,0 +1,7 @@
+hole_id,from_depth,to_depth,lith_code
+DH-101,0,15,OX
+DH-101,15,30,SUL
+DH-102,0,20,OX
+DH-102,20,30,SUL
+DH-103,0,25,OX
+DH-103,25,40,SUL
