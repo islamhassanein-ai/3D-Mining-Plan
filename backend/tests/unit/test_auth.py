@@ -35,7 +35,10 @@ def setup_overrides():
 
 client = TestClient(app)
 
-def test_magic_link_flow():
+def test_magic_link_flow(monkeypatch):
+    import backend.src.api.auth as auth_module
+    monkeypatch.setattr(auth_module, "ALLOWED_SIGNUP_EMAILS", {"test@example.com"})
+
     # 1. Request magic link
     email = "test@example.com"
     response = client.post("/auth/magic-link", json={"email": email})
@@ -43,10 +46,9 @@ def test_magic_link_flow():
     assert response.json() == {"message": "Magic link sent"}
 
     # Extract the token from the active tokens list inside the module
-    from backend.src.api.auth import MAGIC_TOKENS
-    assert len(MAGIC_TOKENS) == 1
-    token = list(MAGIC_TOKENS.keys())[0]
-    assert MAGIC_TOKENS[token] == email
+    assert len(auth_module.MAGIC_TOKENS) == 1
+    token = list(auth_module.MAGIC_TOKENS.keys())[0]
+    assert auth_module.MAGIC_TOKENS[token] == email
 
     # 2. Verify token
     response_verify = client.get(f"/auth/verify?token={token}")
@@ -58,8 +60,48 @@ def test_magic_link_flow():
     assert res_data["user"]["role"] == "owner"
 
     # Verify token consumption
-    assert token not in MAGIC_TOKENS
+    assert token not in auth_module.MAGIC_TOKENS
 
 def test_verify_invalid_token():
     response = client.get("/auth/verify?token=invalid_token")
     assert response.status_code == 401
+
+def test_magic_link_rejects_non_allowlisted_new_email(monkeypatch):
+    import backend.src.api.auth as auth_module
+    monkeypatch.setattr(auth_module, "ALLOWED_SIGNUP_EMAILS", set())
+    monkeypatch.setattr(auth_module, "ALLOWED_SIGNUP_DOMAINS", set())
+
+    response = client.post("/auth/magic-link", json={"email": "intruder@evil.com"})
+    assert response.status_code == 403
+    # No token should have been generated for a rejected signup attempt
+    assert not any(v == "intruder@evil.com" for v in auth_module.MAGIC_TOKENS.values())
+
+def test_magic_link_allows_domain_allowlisted_new_email(monkeypatch):
+    import backend.src.api.auth as auth_module
+    monkeypatch.setattr(auth_module, "ALLOWED_SIGNUP_EMAILS", set())
+    monkeypatch.setattr(auth_module, "ALLOWED_SIGNUP_DOMAINS", {"monark.com"})
+
+    response = client.post("/auth/magic-link", json={"email": "newgeologist@monark.com"})
+    assert response.status_code == 202
+
+def test_magic_link_always_allows_existing_user(monkeypatch):
+    import backend.src.api.auth as auth_module
+    from backend.src.models.user import User
+    import uuid as uuid_module
+
+    # Lock the allowlist down completely -- an existing user must still be able to log in
+    monkeypatch.setattr(auth_module, "ALLOWED_SIGNUP_EMAILS", set())
+    monkeypatch.setattr(auth_module, "ALLOWED_SIGNUP_DOMAINS", set())
+
+    db = TestingSessionLocal()
+    db.add(User(id=uuid_module.uuid4(), email="already-a-user@example.com", role="owner"))
+    db.commit()
+    db.close()
+
+    response = client.post("/auth/magic-link", json={"email": "already-a-user@example.com"})
+    assert response.status_code == 202
+
+    token = list(auth_module.MAGIC_TOKENS.keys())[-1]
+    response_verify = client.get(f"/auth/verify?token={token}")
+    assert response_verify.status_code == 200
+    assert response_verify.json()["user"]["email"] == "already-a-user@example.com"
