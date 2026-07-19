@@ -597,39 +597,33 @@
         const email = document.getElementById('login-email').value;
         const feedback = document.getElementById('login-feedback');
         
-        feedback.textContent = 'Generating login token...';
+        feedback.textContent = 'Signing in...';
         try {
           const res = await fetch(`${API_BASE}/auth/magic-link`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email })
           });
-          
+
           if (res.status === 202) {
-            // Since it is a developer mock visualizer, retrieve token automatically
-            // by calling verification for demo email or prompting token input
-            feedback.innerHTML = `
-              <div style="color:var(--accent-green);font-weight:600;margin-bottom:8px;">✓ Magic link logged in terminal!</div>
-              <div style="font-size:0.75rem;margin-bottom:6px;">For instant testing, enter the login token directly:</div>
-              <input type="text" id="verify-token-input" style="background:black;border:1px solid #334155;color:white;padding:6px;width:100%;border-radius:4px;box-sizing:border-box;margin-bottom:8px;" placeholder="token_xyz...">
-              <button id="verify-token-btn" class="btn-primary" style="width:100%;padding:6px;">Confirm Token</button>
-            `;
-            
-            document.getElementById('verify-token-btn').onclick = async () => {
-              const token = document.getElementById('verify-token-input').value;
-              try {
-                const vRes = await fetch(`${API_BASE}/auth/verify?token=${token}`);
-                if (!vRes.ok) throw new Error("Invalid token");
-                
-                const session = await vRes.json();
-                localStorage.setItem('mining_session_token', session.access_token);
-                container.style.display = 'none';
-                await projectSwitcher.loadProjects();
-                await checkAuth();
-              } catch (err) {
-                alert("Token verification failed");
-              }
-            };
+            const { dev_token } = await res.json();
+
+            // Local dev tool, no real email delivery: auto-verify the token
+            // this same response just gave us instead of making the user
+            // copy it out of the server console.
+            const vRes = await fetch(`${API_BASE}/auth/verify?token=${dev_token}`);
+            if (!vRes.ok) throw new Error("Auto sign-in failed");
+
+            const session = await vRes.json();
+            localStorage.setItem('mining_session_token', session.access_token);
+            container.style.display = 'none';
+            await projectSwitcher.loadProjects();
+            await checkAuth();
+          } else if (res.status === 403) {
+            const err = await res.json().catch(() => ({}));
+            feedback.innerHTML = `<span style="color:#f87171">${err.detail || 'This email is not authorized.'}</span>`;
+          } else {
+            feedback.textContent = 'Sign-in failed.';
           }
         } catch (err) {
           feedback.textContent = 'Server connection error.';

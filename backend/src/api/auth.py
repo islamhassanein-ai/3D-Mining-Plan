@@ -99,7 +99,11 @@ def send_magic_link(request: MagicLinkRequest, db: Session = Depends(get_db)):
     logging.info("==============================================")
     print(f"\n=== MAGIC LINK GENERATED FOR {request.email} ===\n{verification_url}\n==============================================\n")
     
-    return {"message": "Magic link sent"}
+    # This is a local dev tool with no real email delivery -- the token is
+    # already printed unencrypted to this process's console above, so
+    # returning it here too (for the frontend's instant-login convenience)
+    # is not a new exposure.
+    return {"message": "Magic link sent", "dev_token": token}
 
 @router.get("/verify")
 def verify_magic_link(token: str, db: Session = Depends(get_db)):

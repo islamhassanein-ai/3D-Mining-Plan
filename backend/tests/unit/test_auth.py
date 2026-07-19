@@ -43,12 +43,15 @@ def test_magic_link_flow(monkeypatch):
     email = "test@example.com"
     response = client.post("/auth/magic-link", json={"email": email})
     assert response.status_code == 202
-    assert response.json() == {"message": "Magic link sent"}
+    body = response.json()
+    assert body["message"] == "Magic link sent"
+    assert "dev_token" in body
 
     # Extract the token from the active tokens list inside the module
     assert len(auth_module.MAGIC_TOKENS) == 1
     token = list(auth_module.MAGIC_TOKENS.keys())[0]
     assert auth_module.MAGIC_TOKENS[token] == email
+    assert body["dev_token"] == token
 
     # 2. Verify token
     response_verify = client.get(f"/auth/verify?token={token}")
