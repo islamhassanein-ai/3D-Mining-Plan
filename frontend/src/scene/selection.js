@@ -38,27 +38,26 @@ export class SceneSelection {
           const interval = obj.userData.intervals[instanceId];
           
           if (interval) {
-            this.onSelect({
-              type: obj.userData.type === 'assay_intervals' ? 'assay' : 'lithology',
-              collar_id: interval.collar_id,
-              hole_id: interval.hole_id,
-              interval_id: interval.id,
-              from_depth: interval.from_depth,
-              to_depth: interval.to_depth,
-              grade_value: interval.grade_value,
-              lith_code: interval.lith_code,
+            this.onSelect('interval', {
+              collarId: interval.collar_id,
+              holeId: interval.hole_id,
+              intervalId: interval.id,
+              intervalType: obj.userData.type === 'assay_intervals' ? 'assay' : 'lithology',
+              fromDepth: interval.from_depth,
+              toDepth: interval.to_depth,
+              gradeValue: interval.grade_value,
+              lithCode: interval.lith_code,
               point: hit.point
             });
             return; // Selected!
           }
         }
-        
+
         // 2. Check if it's a Line (Drillhole Trace)
         if (obj.isLine && obj.userData && obj.userData.type === 'drillhole_trace') {
-          this.onSelect({
-            type: 'trace',
-            collar_id: obj.userData.collar_id,
-            hole_id: obj.userData.hole_id,
+          this.onSelect('trace', {
+            collarId: obj.userData.collar_id,
+            holeId: obj.userData.hole_id,
             point: hit.point
           });
           return; // Selected!
