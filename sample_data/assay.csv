@@ -1,0 +1,10 @@
+hole_id,from_depth,to_depth,grade_value,grade_unit,qaqc_type,qaqc_standard
+DDH-001,0,20,0.15,g/t,,
+DDH-001,20,40,1.85,g/t,,
+DDH-001,40,60,6.20,g/t,,
+DDH-001,60,65,<0.02,g/t,blank,
+DDH-002,0,25,0.45,g/t,,
+DDH-002,25,50,2.90,g/t,duplicate,
+DDH-002,50,55,1.55,g/t,standard,STD_GOLD_01
+DDH-003,0,30,0.10,g/t,,
+DDH-003,30,60,4.10,g/t,,

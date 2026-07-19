@@ -1,0 +1,7 @@
+hole_id,from_depth,to_depth,lith_code,rqd_percent,core_recovery_percent
+DDH-001,0,40,OX,72,96
+DDH-001,40,65,SUL,88,98
+DDH-002,0,50,OX,65,94
+DDH-002,50,55,SUL,90,99
+DDH-003,0,30,OX,70,95
+DDH-003,30,60,SUL,85,97
