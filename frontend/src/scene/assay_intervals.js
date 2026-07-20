@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { getGradeBucketIndex, DRILL_RADIUS_BY_BUCKET } from './grade_scale.js';
 
 // QA/QC-flagged samples (duplicate/blank/standard) are exploration-control
 // samples, not ore intervals -- so they're rendered in a distinct color
@@ -48,9 +49,10 @@ export class AssayIntervals {
     if (this.intervalsData.length === 0) return;
 
     // 2. Create InstancedMesh
-    // Cylinder geometry along Y axis, unit height, 0.3 radius
-    const radius = 0.25;
-    const geometry = new THREE.CylinderGeometry(radius, radius, 1.0, 8);
+    // Unit-radius cylinder along Y axis; per-instance X/Z scale drives the
+    // actual radius so grade buckets can render at different thicknesses
+    // (see updateMeshMatrices -- higher grade renders visibly thicker).
+    const geometry = new THREE.CylinderGeometry(1.0, 1.0, 1.0, 8);
     // Move geometry origin to bottom so positioning is easier, or leave at center
     // Let's keep it centered which matches compose(mid, quaternion, scale)
     const material = new THREE.MeshStandardMaterial({
@@ -110,7 +112,12 @@ export class AssayIntervals {
       if (hiddenByCutoff || hiddenByLod) {
         scale.set(0, 0, 0);
       } else {
-        scale.set(1.0, length, 1.0); // Scale Y by length, X & Z stay default
+        // Radius scales with grade bucket so higher-grade intervals render
+        // visibly thicker along the drill core, per the reference viewer's
+        // thickness-as-grade-cue convention.
+        const bucketIdx = getGradeBucketIndex(data.grade_value, data.grade_unit);
+        const radius = DRILL_RADIUS_BY_BUCKET[bucketIdx];
+        scale.set(radius, length, radius);
       }
 
       matrix.compose(position, quaternion, scale);

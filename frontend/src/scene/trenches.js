@@ -1,13 +1,11 @@
 import * as THREE from 'three';
 
-// Standard grade colors matching backend
+import { GRADE_BUCKETS, getGradeBucketIndex, TRENCH_RADIUS_BY_BUCKET } from './grade_scale.js';
+
+// Six-bucket Au grade scale matching the backend (backend/src/services/grade_coloring.py)
 function getTrenchGradeColor(grade) {
-  if (grade === null || grade === undefined) return '#9ca3af'; // Gray
-  if (grade < 0.1) return '#9ca3af';
-  if (grade < 0.5) return '#34d399';
-  if (grade < 1.0) return '#60a5fa';
-  if (grade < 5.0) return '#fbbf24';
-  return '#f87171';
+  if (grade === null || grade === undefined) return GRADE_BUCKETS[0].color;
+  return GRADE_BUCKETS[getGradeBucketIndex(grade)].color;
 }
 
 export class TrenchesRenderer {
@@ -30,7 +28,10 @@ export class TrenchesRenderer {
       baselineElevation = sum / drillholes.length;
     }
 
-    const sphereGeom = new THREE.SphereGeometry(1.5, 8, 8);
+    // Unit-radius sphere; per-instance scale drives actual radius so
+    // higher-grade trench samples render visibly larger (matching the
+    // drill-interval thickness-as-grade-cue convention).
+    const sphereGeom = new THREE.SphereGeometry(1.0, 8, 8);
     const material = new THREE.MeshStandardMaterial({ roughness: 0.5, metalness: 0.1 });
 
     this.mesh = new THREE.InstancedMesh(sphereGeom, material, trenches.length);
@@ -45,10 +46,14 @@ export class TrenchesRenderer {
       const t = trenches[i];
       // Map to Three.js Y-up (Easting -> X, Elevation -> Y, Northing -> Z)
       position.set(t.easting, baselineElevation, t.northing);
-      
+
+      const bucketIdx = getGradeBucketIndex(t.grade_value ?? 0);
+      const radius = TRENCH_RADIUS_BY_BUCKET[bucketIdx];
+      scale.set(radius, radius, radius);
+
       matrix.compose(position, quaternion, scale);
       this.mesh.setMatrixAt(i, matrix);
-      
+
       const color = new THREE.Color(getTrenchGradeColor(t.grade_value));
       this.mesh.setColorAt(i, color);
     }

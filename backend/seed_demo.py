@@ -14,6 +14,7 @@ from backend.src.models.collar import Collar
 from backend.src.models.survey import Survey
 from backend.src.models.assay_interval import AssayInterval
 from backend.src.models.lithology_interval import LithologyInterval
+from backend.src.models.trench import Trench
 from backend.src.storage.local_filesystem import LocalFilesystemStorage
 from backend.src.services.csv_import import (
     parse_collar_csv,
@@ -23,6 +24,7 @@ from backend.src.services.csv_import import (
 )
 from backend.src.services.import_validation import validate_import_batch
 from backend.src.services.crs import detect_utm_zone
+import csv as csv_module
 
 def seed():
     db = SessionLocal()
@@ -41,7 +43,10 @@ def seed():
             print(f"User {email} already exists.")
 
         # 2. Check if demo project already exists
-        proj_name = "Monark Gold Prospect"
+        # Default demo project is seeded from the Abo Elmagd Hill reference
+        # dataset (drillholes + trenches extracted from the Abo Elmagd Hill
+        # 3D Design Pro reference viewer) rather than the old generic fixtures.
+        proj_name = "Abo Elmagd Hill (Gold)"
         project = db.query(Project).filter(Project.name == proj_name, Project.owner_id == user.id).first()
         if project:
             print(f"Project '{proj_name}' already exists.")
@@ -57,6 +62,7 @@ def seed():
                 db.query(Collar.id).filter(Collar.project_id == project.id)
             )).delete(synchronize_session=False)
             db.query(Collar).filter(Collar.project_id == project.id).delete(synchronize_session=False)
+            db.query(Trench).filter(Trench.project_id == project.id).delete(synchronize_session=False)
             db.query(ImportBatch).filter(ImportBatch.project_id == project.id).delete(synchronize_session=False)
             project.utm_zone = None
             db.commit()
@@ -73,22 +79,22 @@ def seed():
             db.commit()
             db.refresh(project)
 
-        # 3. Read fixtures
-        fixtures_dir = os.path.join(os.path.dirname(__file__), "tests", "integration", "fixtures")
+        # 3. Read fixtures (Abo Elmagd Hill reference dataset)
+        fixtures_dir = os.path.join(os.path.dirname(__file__), "fixtures", "reference_project")
         with open(os.path.join(fixtures_dir, "collars.csv"), "rb") as f:
             collar_content = f.read()
         with open(os.path.join(fixtures_dir, "surveys.csv"), "rb") as f:
             survey_content = f.read()
         with open(os.path.join(fixtures_dir, "assays.csv"), "rb") as f:
             assay_content = f.read()
-        with open(os.path.join(fixtures_dir, "lithologies.csv"), "rb") as f:
-            lith_content = f.read()
+        with open(os.path.join(fixtures_dir, "trenches.csv"), "r", encoding="utf-8", newline="") as f:
+            trench_rows = list(csv_module.DictReader(f))
 
-        # Parse CSVs
+        # Parse CSVs (reference dataset has no lithology data)
         collars, c_errs = parse_collar_csv(collar_content)
         surveys, s_errs = parse_survey_csv(survey_content)
         assays, a_errs = parse_assay_csv(assay_content)
-        lithologies, l_errs = parse_lithology_csv(lith_content)
+        lithologies, l_errs = [], []
 
         if c_errs or s_errs or a_errs or l_errs:
             print("Errors parsing CSVs:")
@@ -215,10 +221,21 @@ def seed():
                 )
                 db.add(new_lith)
 
+        for t_data in trench_rows:
+            new_trench = Trench(
+                id=uuid.uuid4(),
+                project_id=project.id,
+                trench_id=t_data["trench_id"],
+                easting=float(t_data["easting"]),
+                northing=float(t_data["northing"]),
+                grade_value=float(t_data["grade_value"]) if t_data.get("grade_value") else None
+            )
+            db.add(new_trench)
+
         batch.status = "committed"
         db.add(batch)
         db.commit()
-        print("Demo project data seeded and committed successfully!")
+        print(f"Demo project data seeded and committed successfully! ({len(collars)} holes, {len(trench_rows)} trench points)")
         
     except Exception as e:
         db.rollback()

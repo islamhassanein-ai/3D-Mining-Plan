@@ -6,12 +6,16 @@
   <title>Gold Prospect 3D Visualizer</title>
   <style>
     :root {
-      --bg-darker: #090d16;
-      --bg-dark: #0f172a;
-      --bg-card: rgba(30, 41, 59, 0.7);
-      --border-light: rgba(255, 255, 255, 0.08);
-      --text-main: #f8fafc;
-      --text-muted: #94a3b8;
+      --bg-darker: #0b1220;
+      --bg-dark: #101828;
+      --bg-panel2: #121a2b;
+      --bg-card: rgba(18, 26, 43, 0.85);
+      --border-light: #223049;
+      --text-main: #e8edf5;
+      --text-muted: #93a2ba;
+      --text-faint: #5f7091;
+      --gold: #d4af37;
+      --gold-soft: #e8c76b;
       --accent-blue: #3b82f6;
       --accent-green: #10b981;
       --accent-pink: #ec4899;
@@ -22,16 +26,76 @@
       overflow: hidden;
       background-color: var(--bg-darker);
       color: var(--text-main);
-      font-family: system-ui, -apple-system, sans-serif;
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
     }
     button, input, select {
       font-family: inherit;
     }
     .app-layout {
       display: grid;
-      grid-template-columns: 280px 1fr 340px;
+      grid-template-rows: auto 1fr;
       height: 100vh;
       width: 100vw;
+      overflow: hidden;
+    }
+    #app-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 22px;
+      background: linear-gradient(180deg, #111b2d 0%, #0d1524 100%);
+      border-bottom: 1px solid var(--border-light);
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+      z-index: 20;
+    }
+    #app-header .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    #app-header .mark {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, var(--gold) 0%, #8a6d1f 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 0 0 1px rgba(212, 175, 55, 0.35), 0 4px 10px rgba(0, 0, 0, 0.4);
+      flex-shrink: 0;
+    }
+    #app-header .mark svg { width: 20px; height: 20px; color: #0b1220; }
+    #app-header h1 {
+      font-size: 15px;
+      margin: 0;
+      font-weight: 700;
+      letter-spacing: 0.3px;
+      color: var(--text-main);
+    }
+    #app-header h1 span { color: var(--gold); font-weight: 600; }
+    #app-header .sub {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+    #app-header .meta {
+      display: flex;
+      gap: 22px;
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+    #app-header .meta div { text-align: right; }
+    #app-header .meta div b {
+      display: block;
+      color: var(--text-main);
+      font-size: 13px;
+      font-weight: 700;
+    }
+    #app-header .meta .gold-val { color: var(--gold); }
+    .app-body {
+      display: grid;
+      grid-template-columns: 280px 1fr 340px;
+      min-height: 0;
       overflow: hidden;
     }
     /* Sidebars */
@@ -41,6 +105,7 @@
       display: flex;
       flex-direction: column;
       height: 100%;
+      min-height: 0;
       box-sizing: border-box;
       z-index: 10;
     }
@@ -83,7 +148,7 @@
       font-size: 1rem;
       font-weight: 800;
       letter-spacing: 0.1em;
-      color: var(--accent-blue);
+      color: var(--gold);
       display: flex;
       align-items: center;
       gap: 8px;
@@ -102,8 +167,8 @@
       font-size: 0.85rem;
     }
     .btn-icon {
-      background: var(--accent-blue);
-      color: white;
+      background: linear-gradient(135deg, var(--gold) 0%, #8a6d1f 100%);
+      color: #0b1220;
       border: none;
       width: 34px;
       height: 34px;
@@ -116,11 +181,12 @@
       justify-content: center;
     }
     .btn-icon:hover {
-      background: #2563eb;
+      background: linear-gradient(135deg, var(--gold-soft) 0%, #a3821f 100%);
     }
     
     .sidebar-content {
       flex: 1;
+      min-height: 0;
       overflow-y: auto;
       padding: 20px;
       display: flex;
@@ -133,15 +199,26 @@
       gap: 12px;
     }
     .section-title {
-      font-size: 0.75rem;
+      font-size: 11px;
       font-weight: 700;
       text-transform: uppercase;
-      letter-spacing: 0.05em;
-      color: var(--text-muted);
+      letter-spacing: 0.9px;
+      color: var(--gold);
       margin-bottom: 4px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .section-title::before {
+      content: '';
+      width: 3px;
+      height: 12px;
+      background: var(--gold);
+      border-radius: 2px;
+      display: inline-block;
     }
     .control-card {
-      background: var(--bg-card);
+      background: var(--bg-panel2);
       border: 1px solid var(--border-light);
       border-radius: 8px;
       padding: 12px;
@@ -149,6 +226,60 @@
       flex-direction: column;
       gap: 8px;
     }
+    /* Project summary stat grid */
+    .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .stat { background: #0d1524; border: 1px solid var(--border-light); border-radius: 8px; padding: 8px 10px; }
+    .stat .v { font-size: 18px; font-weight: 800; color: var(--text-main); }
+    .stat .l { font-size: 9.5px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.4px; margin-top: 2px; }
+    .stat.gold .v { color: var(--gold); }
+    /* Grade legend */
+    .grade-legend { display: flex; flex-direction: column; gap: 3px; }
+    .grade-item {
+      display: flex;
+      align-items: center;
+      font-size: 11px;
+      color: var(--text-muted);
+      padding: 2px 0;
+    }
+    .grade-item .sw {
+      width: 20px;
+      height: 8px;
+      border-radius: 2px;
+      margin-right: 8px;
+      flex-shrink: 0;
+    }
+    .grade-item b { color: var(--text-main); font-weight: 600; margin-left: 4px; }
+    /* Camera presets */
+    .view-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+    .vbtn {
+      background: #0d1524;
+      border: 1px solid var(--border-light);
+      color: var(--text-muted);
+      font-size: 11px;
+      padding: 8px 6px;
+      border-radius: 7px;
+      cursor: pointer;
+      text-align: center;
+      transition: 0.15s;
+      font-family: inherit;
+    }
+    .vbtn:hover { background: #182338; border-color: var(--gold); color: var(--gold-soft); }
+    .vbtn.wide { grid-column: 1 / 3; }
+    #reset-camera-btn {
+      width: 100%;
+      margin-top: 2px;
+      background: linear-gradient(135deg, #3a2f10, #1c1608);
+      border: 1px solid var(--gold);
+      color: var(--gold-soft);
+      font-size: 11.5px;
+      padding: 9px;
+      border-radius: 7px;
+      cursor: pointer;
+      font-weight: 600;
+      letter-spacing: 0.3px;
+      font-family: inherit;
+    }
+    #reset-camera-btn:hover { background: linear-gradient(135deg, #4a3a14, #241b0a); }
     .control-label {
       font-size: 0.75rem;
       font-weight: 600;
@@ -173,16 +304,16 @@
     }
     
     .btn-primary {
-      background: var(--accent-blue);
-      color: white;
+      background: linear-gradient(135deg, var(--gold) 0%, #8a6d1f 100%);
+      color: #0b1220;
       border: none;
       padding: 8px 12px;
       border-radius: 6px;
-      font-weight: 600;
+      font-weight: 700;
       cursor: pointer;
     }
     .btn-primary:hover {
-      background: #2563eb;
+      background: linear-gradient(135deg, var(--gold-soft) 0%, #a3821f 100%);
     }
     
     .btn-small {
@@ -289,7 +420,7 @@
     .spinner {
       border: 3px solid rgba(255,255,255,0.1);
       border-radius: 50%;
-      border-top: 3px solid var(--accent-blue);
+      border-top: 3px solid var(--gold);
       width: 40px;
       height: 40px;
       animation: spin 1s linear infinite;
@@ -309,13 +440,29 @@
 </head>
 <body>
   <div class="app-layout">
+    <!-- Top Header Bar -->
+    <div id="app-header">
+      <div class="brand">
+        <div class="mark">
+          <svg viewBox="0 0 24 24"><path fill="currentColor" d="M22.7,19L13.6,9.9C14.5,7.6 14,4.9 12.1,3C10.1,1 7.1,0.6 4.7,1.7L9,6L6,9L1.6,4.7C0.4,7.1 0.9,10.1 2.9,12.1C4.8,14 7.5,14.5 9.8,13.6L18.9,22.7C19.3,23.1 19.9,23.1 20.3,22.7L22.6,20.4C23.1,20 23.1,19.3 22.7,19Z"/></svg>
+        </div>
+        <div>
+          <h1>MONARK 3D MINING <span id="header-project-name">&mdash; Grade Control</span></h1>
+          <div class="sub">Drillhole &bull; Trench &bull; Vein Interpretation Visualizer</div>
+        </div>
+      </div>
+      <div class="meta" id="header-stats" style="display:none;">
+        <div><b id="stat-holes">0</b>Drill Holes</div>
+        <div><b id="stat-trenches">0</b>Trenches</div>
+        <div><b id="stat-assays">0</b>Assay Points</div>
+        <div><b id="stat-peak" class="gold-val">-</b>Peak Grade</div>
+      </div>
+    </div>
+
+    <div class="app-body">
     <!-- Left Sidebar -->
     <aside class="sidebar">
       <div class="sidebar-header">
-        <div class="logo">
-          <svg style="width:20px;height:20px;color:var(--accent-blue)" viewBox="0 0 24 24"><path fill="currentColor" d="M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,4A8,8 0 0,1 20,12A8,8 0 0,1 12,20A8,8 0 0,1 4,12A8,8 0 0,1 12,4M12,6A6,6 0 0,0 6,12A6,6 0 0,0 12,18A6,6 0 0,0 18,12A6,6 0 0,0 12,6Z"/></svg>
-          MONARK 3D MINING
-        </div>
         <div class="project-selector-container">
           <select id="project-select" class="styled-select">
             <option value="">Select Project...</option>
@@ -327,14 +474,47 @@
       <div class="sidebar-content">
         <!-- Visualizer Controls (populated when project active) -->
         <div id="visualizer-controls" class="sidebar-section" style="display: none;">
+
           <div class="section-title">Visual Controls</div>
-          
+
           <!-- Grade Cutoff -->
           <div class="control-card">
             <span class="control-label">Au Grade Cutoff (g/t)</span>
             <div id="cutoff-slider-container"></div>
           </div>
-          
+
+          <!-- Grade Legend -->
+          <div class="control-card">
+            <span class="control-label">Au Grade Scale (g/t)</span>
+            <div class="grade-legend">
+              <div class="grade-item"><span class="sw" style="background:#ff00ff"></span> &gt; 1.0 <b>High</b></div>
+              <div class="grade-item"><span class="sw" style="background:#f72809"></span> 0.5 &ndash; 1.0</div>
+              <div class="grade-item"><span class="sw" style="background:#fef600"></span> 0.1 &ndash; 0.5</div>
+              <div class="grade-item"><span class="sw" style="background:#27ea5b"></span> 0.05 &ndash; 0.1</div>
+              <div class="grade-item"><span class="sw" style="background:#2b24eb"></span> 0.01 &ndash; 0.05</div>
+              <div class="grade-item"><span class="sw" style="background:#7d8b8f"></span> 0 &ndash; 0.01 <b>BG</b></div>
+            </div>
+            <p style="font-size:10px;color:var(--text-faint);line-height:1.5;margin:6px 0 0 0;">Cylinder diameter scales with grade bucket &mdash; higher-grade intervals render visibly thicker.</p>
+          </div>
+
+          <!-- Layer Toggles -->
+          <div class="control-card">
+            <span class="control-label">Layers</span>
+            <div id="layer-toggles-container"></div>
+          </div>
+
+          <!-- Camera Presets -->
+          <div class="control-card">
+            <span class="control-label">Camera Presets</span>
+            <div class="view-btns">
+              <button class="vbtn" data-preset="isometric">Isometric</button>
+              <button class="vbtn" data-preset="plan">Plan View</button>
+              <button class="vbtn" data-preset="section_ns">Section N-S</button>
+              <button class="vbtn" data-preset="section_ew">Section E-W</button>
+            </div>
+            <button id="reset-camera-btn">&#8635; Reset Camera</button>
+          </div>
+
           <!-- 3D Ruler -->
           <div class="control-card">
             <div class="row-spread">
@@ -344,8 +524,8 @@
             <div id="ruler-results" style="display: none; margin-top: 8px;">
               <div style="font-size:0.8rem;font-weight:700;">Distance: <span id="ruler-distance-val" style="color:var(--accent-green);">-</span></div>
               <div style="font-size:0.7rem;color:var(--text-muted);margin-top:4px;">
-                dX: <span id="ruler-dx-val">-</span> | 
-                dY (Elev): <span id="ruler-dy-val">-</span> | 
+                dX: <span id="ruler-dx-val">-</span> |
+                dY (Elev): <span id="ruler-dy-val">-</span> |
                 dZ (North): <span id="ruler-dz-val">-</span>
               </div>
             </div>
@@ -370,10 +550,10 @@
     <!-- Main Scene Area -->
     <main class="main-viewport-container">
       <div id="viewport-3d"></div>
-      
+
       <!-- Synced 2D Cross-section sheet -->
       <div id="section-view-container"></div>
-      
+
       <!-- Camera Toolbar overlay -->
       <div id="toolbar-3d-container" class="floating-toolbar"></div>
     </main>
@@ -382,6 +562,7 @@
     <aside class="right-sidebar">
       <div id="inspector-container"></div>
     </aside>
+    </div>
   </div>
 
   <!-- Loading State -->
@@ -393,7 +574,7 @@
   <!-- Modals Container -->
   <div id="modal-container" style="display: none;"></div>
 
-  <script src="dist/bundle.js"></script>
+  <script src="dist/bundle.js?v=4"></script>
   <script>
     // Initialize application logic
     const API_BASE = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') ? 'http://localhost:8000' : '';
@@ -500,7 +681,23 @@
         
         // Load data via SceneLoader
         const data = await viewport3D.sceneLoader.loadProject(projectId);
-        
+
+        // Wire Camera Preset buttons + Reset
+        document.querySelectorAll('.vbtn[data-preset]').forEach(btn => {
+          btn.onclick = () => viewport3D.controls.setPreset(btn.dataset.preset);
+        });
+        document.getElementById('reset-camera-btn').onclick = () => {
+          viewport3D.sceneLoader.fitCameraToData(data.drillholes);
+        };
+
+        // Update header project name + summary stats
+        updateHeaderStats(projectId, data);
+
+        // Setup Layer Toggles
+        const layerContainer = document.getElementById('layer-toggles-container');
+        layerContainer.innerHTML = '';
+        new window.LayerTogglePanel(layerContainer, viewport3D);
+
         // Setup Cutoff Slider
         const sliderContainer = document.getElementById('cutoff-slider-container');
         sliderContainer.innerHTML = '';
@@ -560,10 +757,37 @@
       }
     }
 
+    function updateHeaderStats(projectId, data) {
+      if (projectId) {
+        const select = document.getElementById('project-select');
+        const opt = select && select.querySelector(`option[value="${projectId}"]`);
+        document.getElementById('header-project-name').textContent = opt ? `— ${opt.textContent}` : '— Grade Control';
+      }
+
+      const drillholes = data.drillholes || [];
+      let assayCount = 0, peakGrade = 0;
+      for (const dh of drillholes) {
+        for (const a of dh.assays) {
+          assayCount++;
+          if (a.grade_value > peakGrade) peakGrade = a.grade_value;
+        }
+      }
+
+      const trenchCount = (data.trenches || []).length;
+
+      document.getElementById('stat-holes').textContent = drillholes.length;
+      document.getElementById('stat-trenches').textContent = trenchCount;
+      document.getElementById('stat-assays').textContent = assayCount;
+      document.getElementById('stat-peak').textContent = assayCount ? `${peakGrade.toFixed(1)} g/t` : '-';
+      document.getElementById('header-stats').style.display = 'flex';
+    }
+
     function unloadActiveProject() {
       currentProject = null;
       localStorage.removeItem('active_project_id');
       document.getElementById('visualizer-controls').style.display = 'none';
+      document.getElementById('header-stats').style.display = 'none';
+      document.getElementById('header-project-name').textContent = '— Grade Control';
       if (viewport3D) {
         viewport3D.destroy();
         viewport3D = null;
@@ -656,9 +880,10 @@
         }
       });
       
-      // Update logo text to show Shared Mode
-      const logoEl = document.querySelector('.logo');
-      if (logoEl) logoEl.innerHTML = `<svg style="width:20px;height:20px;color:var(--accent-pink)" viewBox="0 0 24 24"><path fill="currentColor" d="M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,4A8,8 0 0,1 20,12A8,8 0 0,1 12,20A8,8 0 0,1 4,12A8,8 0 0,1 12,4M12,6A6,6 0 0,0 6,12A6,6 0 0,0 12,18A6,6 0 0,0 18,12A6,6 0 0,0 12,6Z"/></svg> MINING VIEWER`;
+      // Update header title to show Shared/Read-Only Mode
+      const subEl = document.querySelector('#app-header .sub');
+      if (subEl) subEl.textContent = 'Read-Only Shared Viewer';
+      document.getElementById('header-project-name').textContent = '— Shared Prospect';
       
       // Update session status footer
       const authDiv = document.getElementById('auth-status-div');
@@ -699,7 +924,22 @@
         
         // Load data via shared SceneLoader method
         const data = await viewport3D.sceneLoader.loadSharedProject(token);
-        
+
+        // Wire Camera Preset buttons + Reset
+        document.querySelectorAll('.vbtn[data-preset]').forEach(btn => {
+          btn.onclick = () => viewport3D.controls.setPreset(btn.dataset.preset);
+        });
+        document.getElementById('reset-camera-btn').onclick = () => {
+          viewport3D.sceneLoader.fitCameraToData(data.drillholes);
+        };
+
+        updateHeaderStats(null, data);
+
+        // Setup Layer Toggles
+        const layerContainer = document.getElementById('layer-toggles-container');
+        layerContainer.innerHTML = '';
+        new window.LayerTogglePanel(layerContainer, viewport3D);
+
         // Setup Cutoff Slider
         const sliderContainer = document.getElementById('cutoff-slider-container');
         sliderContainer.innerHTML = '';

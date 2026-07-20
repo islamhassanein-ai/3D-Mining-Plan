@@ -23,6 +23,7 @@ import { HistoryPanel } from '../components/history_panel.js';
 import { ExportPanel } from '../components/export_panel.js';
 import { StructuralPanel } from '../components/structural_panel.js';
 import { QaqcPanel } from '../components/qaqc_panel.js';
+import { LayerTogglePanel } from '../components/layer_toggles.js';
 
 let scene = null;
 let camera = null;
@@ -158,6 +159,7 @@ export function init3DViewport(container, options = {}) {
     topographyRenderer,
     trenchesRenderer,
     wireframesRenderer,
+    structuralReadingsRenderer,
     sceneLoader,
     lodManager,
     destroy() {
@@ -172,6 +174,7 @@ export function init3DViewport(container, options = {}) {
       topographyRenderer.clear();
       trenchesRenderer.clear();
       wireframesRenderer.clear();
+      structuralReadingsRenderer.clear();
       renderer.dispose();
       if (renderer.domElement && renderer.domElement.parentNode) {
         renderer.domElement.parentNode.removeChild(renderer.domElement);
@@ -202,4 +205,5 @@ window.SharePanel = SharePanel;
 window.HistoryPanel = HistoryPanel;
 window.StructuralPanel = StructuralPanel;
 window.QaqcPanel = QaqcPanel;
+window.LayerTogglePanel = LayerTogglePanel;
 window.ExportPanel = ExportPanel;

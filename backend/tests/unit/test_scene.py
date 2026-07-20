@@ -137,7 +137,7 @@ def test_scene_with_drillhole():
     # Assay validation
     assert len(dh["assays"]) == 1
     ass_data = dh["assays"][0]
-    assert ass_data["color"] == "#fbbf24" # 2.5 ppm is Yellow/Orange
+    assert ass_data["color"] == "#ff00ff" # 2.5 ppm is High grade (>1.0 g/t bucket)
     assert ass_data["start_pos"] == [100.0, 200.0, 50.0] # start at collar
     # End pos at 50m should be interpolated somewhere between depth 0 and 100
     assert ass_data["end_pos"][2] < 50.0 # elevation should decrease

@@ -55,8 +55,8 @@ export class SceneToolbar {
         color: #f1f5f9;
       }
       .toolbar-btn.active {
-        background: #3b82f6;
-        color: white;
+        background: #d4af37;
+        color: #0b1220;
       }
       .toolbar-divider {
         width: 1px;

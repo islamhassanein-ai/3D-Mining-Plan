@@ -21,17 +21,12 @@ export class CutoffSlider {
     style.id = 'cutoff-slider-styles';
     style.textContent = `
       .cutoff-container {
-        background: rgba(15, 23, 42, 0.85);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        border-radius: 8px;
-        padding: 12px 16px;
         color: #e2e8f0;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-        backdrop-filter: blur(8px);
         display: flex;
         flex-direction: column;
-        gap: 8px;
-        width: 240px;
+        gap: 6px;
+        width: 100%;
+        box-sizing: border-box;
         pointer-events: auto;
       }
       .cutoff-header {
@@ -48,7 +43,7 @@ export class CutoffSlider {
       .cutoff-value {
         font-size: 0.875rem;
         font-weight: 700;
-        color: #3b82f6;
+        color: #d4af37;
       }
       .cutoff-input-row {
         display: flex;
@@ -70,7 +65,7 @@ export class CutoffSlider {
         width: 14px;
         height: 14px;
         border-radius: 50%;
-        background: #3b82f6;
+        background: #d4af37;
         cursor: pointer;
         transition: transform 0.1s ease;
       }
