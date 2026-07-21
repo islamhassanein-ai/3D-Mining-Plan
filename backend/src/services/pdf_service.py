@@ -4,6 +4,8 @@ from typing import List, Dict, Any, Optional, Tuple
 from reportlab.pdfgen import canvas
 from reportlab.lib import colors
 
+from backend.src.services.grade_coloring import GRADE_BUCKETS
+
 
 def _plane_normal(plane_type: str, azimuth_deg: float) -> Tuple[float, float, float]:
     """Plane normal in Y-up space (X=Easting, Y=Elevation, Z=Northing), matching
@@ -90,7 +92,38 @@ def compute_section_plane_view(
         if len(points_2d) >= 2:
             sliced_traces.append({"hole_id": tr.get("hole_id", ""), "points": points_2d})
 
-    return {"collars_2d": sliced_collars, "traces_2d": sliced_traces}
+    return {"collars_2d": sliced_collars, "traces_2d": sliced_traces, "center": center}
+
+
+def _slice_assay_segments(
+    assay_segments: List[Dict[str, Any]],
+    plane_type: str,
+    offset: float,
+    thickness: float,
+    azimuth: float,
+    center: Tuple[float, float, float]
+) -> List[Dict[str, Any]]:
+    """Slices assay intervals by the same plane as collars/traces, keeping a
+    segment when its midpoint falls within the slab -- mirroring how
+    slicing_plane.js treats assay intervals on screen (by their midpoint)."""
+    normal = _plane_normal(plane_type, azimuth)
+    half_thick = thickness / 2.0
+    out = []
+    for seg in assay_segments:
+        s, e = seg["start"], seg["end"]
+        mid = ((s["x"] + e["x"]) / 2.0, (s["y"] + e["y"]) / 2.0, (s["z"] + e["z"]) / 2.0)
+        if abs(_distance_to_plane(mid, center, offset, normal)) <= half_thick:
+            u0, v0 = _project_point_2d((s["x"], s["y"], s["z"]), plane_type, azimuth)
+            u1, v1 = _project_point_2d((e["x"], e["y"], e["z"]), plane_type, azimuth)
+            out.append({
+                "hole_id": seg["hole_id"],
+                "start": (u0, v0),
+                "end": (u1, v1),
+                "grade_value": seg["grade_value"],
+                "grade_unit": seg.get("grade_unit", "ppm"),
+                "color": seg["color"]
+            })
+    return out
 
 
 def export_section_to_pdf(
@@ -99,21 +132,27 @@ def export_section_to_pdf(
     collars: List[Dict[str, Any]],
     traces: List[Dict[str, Any]],
     wireframe_intersects: List[Dict[str, Any]],
-    plane_params: Optional[Dict[str, Any]] = None
+    plane_params: Optional[Dict[str, Any]] = None,
+    assay_segments: Optional[List[Dict[str, Any]]] = None
 ) -> bytes:
     """
     Generates a scaled 2D cross-section PDF containing:
     - Collars (as circles with labels)
     - Drillhole traces (as lines)
+    - Grade-colored assay intervals along each trace
     - Vein solid wireframe intersection profiles (as shaded polygons)
-    - Coordinate grid system & legend.
+    - Coordinate grid system, grade-range legend, and section metadata.
 
     When `plane_params` is given (type/offset/thickness/azimuth), only the
-    collars/traces that intersect that slicing plane are plotted, matching the
-    section currently visible in the frontend's 2D Vertical Cross-Section
-    panel (FR-006). When omitted, falls back to a full-project projection
-    (legacy behavior, e.g. for projects with no active slice).
+    collars/traces/assays that intersect that slicing plane are plotted,
+    matching the section currently visible in the frontend's 2D Vertical
+    Cross-Section panel (FR-006). When omitted, falls back to a
+    full-project projection (legacy behavior, e.g. for projects with no
+    active slice), and assay intervals are plotted unsliced.
     """
+    assay_segments = assay_segments or []
+    sliced_assays: List[Dict[str, Any]] = []
+
     if plane_params is not None:
         sliced = compute_section_plane_view(
             collars, traces,
@@ -131,6 +170,32 @@ def export_section_to_pdf(
             for tr in sliced["traces_2d"]
         ]
         wireframe_intersects = []  # wireframe 2D slicing is not implemented; omit rather than show unsliced 3D data
+
+        # Reuse the exact same bounding-box center compute_section_plane_view
+        # computed for collars/traces, so assay slicing is judged against
+        # the identical plane origin (not a separately-derived one).
+        sliced_assays = _slice_assay_segments(
+            assay_segments,
+            plane_params.get("type", "EW"),
+            plane_params.get("offset", 0.0),
+            plane_params.get("thickness", 20.0),
+            plane_params.get("azimuth", 0.0),
+            sliced["center"]
+        )
+    else:
+        # No active slice: plot every interval projected onto an EW view
+        # (u=Northing, v=Elevation) so the PDF still shows grade data
+        # rather than only bare traces.
+        for seg in assay_segments:
+            s, e = seg["start"], seg["end"]
+            sliced_assays.append({
+                "hole_id": seg["hole_id"],
+                "start": (s["z"], s["y"]),
+                "end": (e["z"], e["y"]),
+                "grade_value": seg["grade_value"],
+                "grade_unit": seg.get("grade_unit", "ppm"),
+                "color": seg["color"]
+            })
 
     buffer = io.BytesIO()
     # Landscape Letter size: 792 x 612 points
@@ -266,7 +331,18 @@ def export_section_to_pdf(
                     c.line(px, pz, nx, nz)
                     px, pz = nx, nz
                 
-    # 6. Draw Collars (Blue Circles)
+    # 6. Draw Grade-Colored Assay Intervals (thick segments over the trace)
+    c.setLineWidth(4.0)
+    c.setLineCap(1)  # round caps so adjoining intervals read as one core
+    for seg in sliced_assays:
+        u0, v0 = seg["start"]
+        u1, v1 = seg["end"]
+        px, pz = to_plot_coords(u0, v0)
+        nx, nz = to_plot_coords(u1, v1)
+        c.setStrokeColor(colors.HexColor(seg["color"]))
+        c.line(px, pz, nx, nz)
+
+    # 7. Draw Collars (Blue Circles)
     c.setStrokeColor(colors.white)
     c.setFillColor(colors.HexColor("#3b82f6"))
     c.setLineWidth(1.0)
@@ -278,29 +354,29 @@ def export_section_to_pdf(
         c.setFillColor(colors.white)
         c.drawString(px + 6, pz + 4, col.get("hole_id", "DH"))
 
-    # 7. Draw Legend Box
+    # 8. Draw Legend Box
     legend_x, legend_y, legend_w, legend_h = 590, 50, 172, 450
     c.setFillColor(colors.HexColor("#1e293b"))
     c.rect(legend_x, legend_y, legend_w, legend_h, fill=True, stroke=False)
-    
+
     c.setFillColor(colors.white)
     c.setFont("Helvetica-Bold", 12)
     c.drawString(legend_x + 12, legend_y + legend_h - 24, "LEGEND")
-    
+
     # Collar Legend Item
     c.setFillColor(colors.HexColor("#3b82f6"))
     c.circle(legend_x + 24, legend_y + legend_h - 58, 4, fill=True, stroke=True)
     c.setFillColor(colors.white)
     c.setFont("Helvetica", 9)
     c.drawString(legend_x + 40, legend_y + legend_h - 61, "Collar Location")
-    
+
     # Drillhole Trace Legend Item
     c.setStrokeColor(colors.HexColor("#10b981"))
     c.setLineWidth(2.5)
     c.line(legend_x + 16, legend_y + legend_h - 96, legend_x + 32, legend_y + legend_h - 96)
     c.setFillColor(colors.white)
     c.drawString(legend_x + 40, legend_y + legend_h - 99, "Drillhole Trace")
-    
+
     # Vein Solid Intersect Legend Item
     c.setFillColor(colors.HexColor("#db2777"))
     c.setStrokeColor(colors.HexColor("#ec4899"))
@@ -308,17 +384,35 @@ def export_section_to_pdf(
     c.rect(legend_x + 16, legend_y + legend_h - 138, 16, 12, fill=True, stroke=True)
     c.setFillColor(colors.white)
     c.drawString(legend_x + 40, legend_y + legend_h - 136, "Vein Solid Intersect")
-    
+
+    # Au Grade Scale -- ranges + colors, matching the 3D viewer's legend
+    # exactly (GRADE_BUCKETS is the same canonical list used to color the
+    # intervals drawn above), so the PDF is self-explanatory on its own
+    # rather than only showing bare traces with no grade information.
+    grade_y = legend_y + legend_h - 170
+    c.setFont("Helvetica-Bold", 10)
+    c.setFillColor(colors.HexColor("#94a3b8"))
+    c.drawString(legend_x + 12, grade_y, "AU GRADE SCALE (g/t)")
+    row_y = grade_y - 20
+    for upper, color, label in reversed(GRADE_BUCKETS):
+        c.setFillColor(colors.HexColor(color))
+        c.rect(legend_x + 16, row_y - 3, 16, 8, fill=True, stroke=False)
+        c.setFillColor(colors.white)
+        c.setFont("Helvetica", 8)
+        c.drawString(legend_x + 40, row_y - 1, label)
+        row_y -= 16
+
     # Metadata info
     c.setFont("Helvetica-Bold", 10)
     c.setFillColor(colors.HexColor("#94a3b8"))
-    c.drawString(legend_x + 12, legend_y + 80, "PROJECT METADATA")
+    c.drawString(legend_x + 12, legend_y + 70, "PROJECT METADATA")
     c.setFont("Helvetica", 8)
     c.setFillColor(colors.HexColor("#cbd5e1"))
-    c.drawString(legend_x + 12, legend_y + 60, f"Collars Plotted: {len(collars)}")
-    c.drawString(legend_x + 12, legend_y + 45, f"Vein Profiles: {len(wireframe_intersects)}")
-    c.drawString(legend_x + 12, legend_y + 30, f"Format: Letter Landscape")
-    
+    c.drawString(legend_x + 12, legend_y + 52, f"Collars Plotted: {len(collars)}")
+    c.drawString(legend_x + 12, legend_y + 38, f"Assay Intervals: {len(sliced_assays)}")
+    c.drawString(legend_x + 12, legend_y + 24, f"Vein Profiles: {len(wireframe_intersects)}")
+    c.drawString(legend_x + 12, legend_y + 10, f"Format: Letter Landscape")
+
     c.showPage()
     c.save()
     

@@ -13,13 +13,15 @@ export class LayerTogglePanel {
       { key: 'trenches', label: 'Trenches', color: '#f72809', get: () => viewport.trenchesRenderer && viewport.trenchesRenderer.group },
       { key: 'wireframes', label: 'Vein Wireframes', color: '#ec4899', get: () => viewport.wireframesRenderer && viewport.wireframesRenderer.group },
       { key: 'structural', label: 'Structural Readings', color: '#eab308', get: () => viewport.structuralReadingsRenderer && viewport.structuralReadingsRenderer.group },
+      { key: 'labels', label: 'Borehole Labels', color: '#e8c76b', get: () => viewport.boreholeLabelsRenderer && viewport.boreholeLabelsRenderer.group, defaultOff: true },
     ];
 
     // Track desired visibility per layer so it survives re-renders
     // (assay/lithology meshes get recreated whenever grade cutoff or
-    // project data reloads).
+    // project data reloads). Borehole labels default off -- they read as
+    // clutter on dense sites until the user opts in.
     this.state = {};
-    this.layers.forEach(l => { this.state[l.key] = true; });
+    this.layers.forEach(l => { this.state[l.key] = !l.defaultOff; });
 
     this.init();
   }
@@ -67,7 +69,7 @@ export class LayerTogglePanel {
           <div class="layer-toggle-row">
             <span class="lbl"><span class="swatch" style="background:${l.color}"></span>${l.label}</span>
             <label class="layer-switch">
-              <input type="checkbox" data-layer="${l.key}" checked>
+              <input type="checkbox" data-layer="${l.key}" ${this.state[l.key] ? 'checked' : ''}>
               <span class="layer-slider"></span>
             </label>
           </div>

@@ -39,6 +39,75 @@ def create_project(
         "created_at": project.created_at.isoformat() if project.created_at else None
     }
 
+class ProjectUpdate(BaseModel):
+    utm_zone: Optional[str] = None
+    name: Optional[str] = None
+    commodity: Optional[str] = None
+
+@router.patch("/{project_id}")
+def update_project(
+    project_id: str,
+    project_in: ProjectUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    project = get_owned_project_or_404(project_id, db, current_user)
+
+    if project_in.utm_zone is not None:
+        project.utm_zone = project_in.utm_zone.strip() or None
+    if project_in.name is not None:
+        project.name = project_in.name.strip() or project.name
+    if project_in.commodity is not None:
+        project.commodity = project_in.commodity.strip() or None
+
+    db.add(project)
+    db.commit()
+    db.refresh(project)
+    return {
+        "id": str(project.id),
+        "name": project.name,
+        "utm_zone": project.utm_zone,
+        "commodity": project.commodity,
+        "created_at": project.created_at.isoformat() if project.created_at else None
+    }
+
+@router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_project(
+    project_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    project = get_owned_project_or_404(project_id, db, current_user)
+
+    from backend.src.models.collar import Collar
+    from backend.src.models.survey import Survey
+    from backend.src.models.assay_interval import AssayInterval
+    from backend.src.models.lithology_interval import LithologyInterval
+    from backend.src.models.import_batch import ImportBatch
+    from backend.src.models.structural_reading import StructuralReading
+    from backend.src.models.qaqc_standard import QaqcStandard
+    from backend.src.models.share_link import ShareLink
+
+    collar_ids = db.query(Collar.id).filter(Collar.project_id == project.id)
+    # Children reference collar_id, not project_id, so they're deleted via
+    # a subquery on this project's collars first.
+    db.query(AssayInterval).filter(AssayInterval.collar_id.in_(collar_ids)).delete(synchronize_session=False)
+    db.query(LithologyInterval).filter(LithologyInterval.collar_id.in_(collar_ids)).delete(synchronize_session=False)
+    db.query(Survey).filter(Survey.collar_id.in_(collar_ids)).delete(synchronize_session=False)
+    db.query(Collar).filter(Collar.project_id == project.id).delete(synchronize_session=False)
+    db.query(Trench).filter(Trench.project_id == project.id).delete(synchronize_session=False)
+    db.query(Wireframe).filter(Wireframe.project_id == project.id).delete(synchronize_session=False)
+    db.query(StructuralReading).filter(StructuralReading.project_id == project.id).delete(synchronize_session=False)
+    db.query(QaqcStandard).filter(QaqcStandard.project_id == project.id).delete(synchronize_session=False)
+    db.query(ShareLink).filter(ShareLink.project_id == project.id).delete(synchronize_session=False)
+    # ImportBatch is referenced by Collar/StructuralReading via NOT NULL FKs,
+    # so it must be deleted after those, not before.
+    db.query(ImportBatch).filter(ImportBatch.project_id == project.id).delete(synchronize_session=False)
+
+    db.delete(project)
+    db.commit()
+    return None
+
 @router.get("/{project_id}")
 def get_project(
     project_id: str,
@@ -133,10 +202,11 @@ async def upload_trenches(
             t_id = row["trench_id"].strip()
             easting = float(row["easting"])
             northing = float(row["northing"])
+            elevation = float(row["elevation"]) if row.get("elevation") and row["elevation"].strip() else None
             grade_value = float(row["grade_value"]) if row.get("grade_value") and row["grade_value"].strip() else None
         except ValueError:
             continue
-            
+
         new_id = uuid.uuid4()
         new_t = Trench(
             id=new_id,
@@ -144,6 +214,7 @@ async def upload_trenches(
             trench_id=t_id,
             easting=easting,
             northing=northing,
+            elevation=elevation,
             grade_value=grade_value
         )
         db.add(new_t)

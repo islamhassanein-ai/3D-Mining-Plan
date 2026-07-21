@@ -112,11 +112,14 @@ def seed():
             print("Validation errors detected:", issues)
             return
 
-        # Detect UTM Zone
+        # Abo Elmagd Hill is surveyed in UTM Zone 37N -- detect_utm_zone() is
+        # metadata-only (it doesn't actually infer a zone from coordinates),
+        # so the correct zone has to be supplied explicitly here rather than
+        # falling back to the generic 36N default used elsewhere.
         detected_zone = detect_utm_zone(
             [c["easting"] for c in collars],
             [c["northing"] for c in collars],
-            "36N"
+            "37N"
         )
         print("Detected UTM Zone:", detected_zone)
 
@@ -228,6 +231,7 @@ def seed():
                 trench_id=t_data["trench_id"],
                 easting=float(t_data["easting"]),
                 northing=float(t_data["northing"]),
+                elevation=float(t_data["elevation"]) if t_data.get("elevation") else None,
                 grade_value=float(t_data["grade_value"]) if t_data.get("grade_value") else None
             )
             db.add(new_trench)

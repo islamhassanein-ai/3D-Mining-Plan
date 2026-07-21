@@ -16,6 +16,8 @@ import { WireframesRenderer } from './wireframes.js';
 import { StructuralReadingsRenderer } from './structural_readings.js';
 import { LodManager } from './lod_manager.js';
 import { OrientationGizmo } from './orientation_gizmo.js';
+import { CoordinateFlag } from './coordinate_flag.js';
+import { BoreholeLabels } from './borehole_labels.js';
 import { ImportPanel } from '../components/import_panel.js';
 import { ProjectSwitcher } from '../components/project_switcher.js';
 import { SharePanel } from '../components/share_panel.js';
@@ -24,6 +26,7 @@ import { ExportPanel } from '../components/export_panel.js';
 import { StructuralPanel } from '../components/structural_panel.js';
 import { QaqcPanel } from '../components/qaqc_panel.js';
 import { LayerTogglePanel } from '../components/layer_toggles.js';
+import { ApiClient } from '../services/api_client.js';
 
 let scene = null;
 let camera = null;
@@ -91,16 +94,18 @@ export function init3DViewport(container, options = {}) {
   const trenchesRenderer = new TrenchesRenderer(scene);
   const wireframesRenderer = new WireframesRenderer(scene);
   const structuralReadingsRenderer = new StructuralReadingsRenderer(scene);
+  const coordinateFlag = new CoordinateFlag(scene);
+  const boreholeLabelsRenderer = new BoreholeLabels(scene);
 
   // 8. LOD Manager for performance at scale
   const lodManager = new LodManager(camera, tracesRenderer, assaysRenderer, lithologiesRenderer);
 
   // 9. Instantiate Scene Loader
   sceneLoader = new SceneLoader(
-    scene, controls, 
+    scene, controls,
     tracesRenderer, assaysRenderer, lithologiesRenderer,
     topographyRenderer, trenchesRenderer, wireframesRenderer,
-    structuralReadingsRenderer, lodManager
+    structuralReadingsRenderer, lodManager, boreholeLabelsRenderer
   );
 
   // 9. Resize Handling
@@ -160,6 +165,8 @@ export function init3DViewport(container, options = {}) {
     trenchesRenderer,
     wireframesRenderer,
     structuralReadingsRenderer,
+    coordinateFlag,
+    boreholeLabelsRenderer,
     sceneLoader,
     lodManager,
     destroy() {
@@ -175,6 +182,8 @@ export function init3DViewport(container, options = {}) {
       trenchesRenderer.clear();
       wireframesRenderer.clear();
       structuralReadingsRenderer.clear();
+      coordinateFlag.dispose();
+      boreholeLabelsRenderer.clear();
       renderer.dispose();
       if (renderer.domElement && renderer.domElement.parentNode) {
         renderer.domElement.parentNode.removeChild(renderer.domElement);
@@ -206,4 +215,5 @@ window.HistoryPanel = HistoryPanel;
 window.StructuralPanel = StructuralPanel;
 window.QaqcPanel = QaqcPanel;
 window.LayerTogglePanel = LayerTogglePanel;
+window.ApiClient = ApiClient;
 window.ExportPanel = ExportPanel;

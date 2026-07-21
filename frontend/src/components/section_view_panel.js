@@ -45,7 +45,8 @@ export class SectionViewPanel {
         flex-direction: column;
         gap: 16px;
         height: 100%;
-        overflow: hidden;
+        box-sizing: border-box;
+        overflow-y: auto;
       }
       .panel-header-row {
         display: flex;
@@ -161,6 +162,7 @@ export class SectionViewPanel {
       }
       .canvas-wrapper {
         flex: 1;
+        min-height: 180px;
         background: #0b0f19;
         border: 1px solid rgba(255, 255, 255, 0.1);
         border-radius: 8px;
@@ -184,10 +186,13 @@ export class SectionViewPanel {
             <svg style="width:20px;height:20px;color:#3b82f6" viewBox="0 0 24 24"><path fill="currentColor" d="M3,5H21V19H3V5M5,7V17H19V7H5Z"/></svg>
             2D Vertical Cross-Section
           </div>
-          <label class="toggle-switch">
-            <input type="checkbox" id="slice-active-toggle" ${this.active ? 'checked' : ''}>
-            <span class="slider-round"></span>
-          </label>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <button id="section-export-png-btn" class="btn-tab" style="border:1px solid rgba(255,255,255,0.15);border-radius:6px;padding:5px 10px;white-space:nowrap;" title="Export this cross-section as a PNG image">Export PNG</button>
+            <label class="toggle-switch">
+              <input type="checkbox" id="slice-active-toggle" ${this.active ? 'checked' : ''}>
+              <span class="slider-round"></span>
+            </label>
+          </div>
         </div>
 
         <div class="controls-grid" style="display: ${this.active ? 'grid' : 'none'};">
@@ -273,6 +278,18 @@ export class SectionViewPanel {
   }
 
   bindEvents() {
+    // 0. Export current section as PNG
+    const exportBtn = this.container.querySelector('#section-export-png-btn');
+    exportBtn.addEventListener('click', () => {
+      const canvas = this.container.querySelector('#section-canvas');
+      const dataUrl = canvas.toDataURL('image/png');
+      const link = document.createElement('a');
+      const typeLabel = this.type === 'AZIMUTH' ? `azimuth${this.azimuth}` : this.type;
+      link.download = `cross-section-${typeLabel}-offset${this.offset}m.png`;
+      link.href = dataUrl;
+      link.click();
+    });
+
     // 1. Toggle Slice
     const toggle = this.container.querySelector('#slice-active-toggle');
     toggle.addEventListener('change', (e) => {

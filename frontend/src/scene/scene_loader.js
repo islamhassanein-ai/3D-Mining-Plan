@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { ApiClient } from '../services/api_client.js';
 
 export class SceneLoader {
-  constructor(scene, controls, tracesRenderer, assaysRenderer, lithologiesRenderer, topographyRenderer, trenchesRenderer, wireframesRenderer, structuralRenderer, lodManager) {
+  constructor(scene, controls, tracesRenderer, assaysRenderer, lithologiesRenderer, topographyRenderer, trenchesRenderer, wireframesRenderer, structuralRenderer, lodManager, boreholeLabelsRenderer) {
     this.scene = scene;
     this.controls = controls;
     this.tracesRenderer = tracesRenderer;
@@ -13,6 +13,7 @@ export class SceneLoader {
     this.wireframesRenderer = wireframesRenderer;
     this.structuralRenderer = structuralRenderer;
     this.lodManager = lodManager;
+    this.boreholeLabelsRenderer = boreholeLabelsRenderer;
     this.loading = false;
   }
 
@@ -32,7 +33,8 @@ export class SceneLoader {
       if (this.trenchesRenderer) this.trenchesRenderer.render(data.trenches, data.drillholes);
       if (this.wireframesRenderer) await this.wireframesRenderer.render(data.wireframes);
       if (this.structuralRenderer) this.structuralRenderer.render(data.structural_readings);
-      
+      if (this.boreholeLabelsRenderer) this.boreholeLabelsRenderer.render(data.drillholes);
+
       // 2. Feed LOD manager with drillhole collar positions
       if (this.lodManager) this.lodManager.setDrillholes(data.drillholes);
       
@@ -64,7 +66,8 @@ export class SceneLoader {
       if (this.trenchesRenderer) this.trenchesRenderer.render(data.trenches, data.drillholes);
       if (this.wireframesRenderer) await this.wireframesRenderer.render(data.wireframes);
       if (this.structuralRenderer) this.structuralRenderer.render(data.structural_readings);
-      
+      if (this.boreholeLabelsRenderer) this.boreholeLabelsRenderer.render(data.drillholes);
+
       // 2. Feed LOD manager with drillhole collar positions
       if (this.lodManager) this.lodManager.setDrillholes(data.drillholes);
       

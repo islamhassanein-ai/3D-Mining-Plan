@@ -114,6 +114,17 @@ export class DampedCameraControls {
     }
   }
 
+  // Re-centers the orbit target on a UTM coordinate (Easting/Northing/
+  // Elevation), keeping the current viewing angle and distance so the user
+  // doesn't lose their orientation when jumping across the site.
+  goToCoordinate(easting, northing, elevation) {
+    const target = new THREE.Vector3(easting, elevation, northing);
+    this.target.copy(target);
+    const offset = new THREE.Vector3().setFromSpherical(this.sphericalTarget);
+    this.camera.position.copy(target).add(offset);
+    this.updateSphericalFromCamera();
+  }
+
   onPointerDown(event) {
     event.preventDefault();
 

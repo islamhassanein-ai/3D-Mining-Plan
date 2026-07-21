@@ -67,6 +67,34 @@ export const ApiClient = {
     return res.json();
   },
 
+  async deleteProject(projectId) {
+    const res = await fetch(`${API_BASE_URL}/projects/${projectId}`, {
+      method: 'DELETE',
+      headers: getHeaders()
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to delete project' }));
+      throw new Error(err.detail || 'Failed to delete project');
+    }
+    return true;
+  },
+
+  async updateProject(projectId, fields) {
+    const res = await fetch(`${API_BASE_URL}/projects/${projectId}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getHeaders()
+      },
+      body: JSON.stringify(fields)
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to update project' }));
+      throw new Error(err.detail || 'Failed to update project');
+    }
+    return res.json();
+  },
+
   // Imports
   async uploadImports(projectId, files) {
     const formData = new FormData();

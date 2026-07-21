@@ -12,6 +12,7 @@ class Trench(Base):
     trench_id = Column(String, nullable=False)
     easting = Column(Float, nullable=True)
     northing = Column(Float, nullable=True)
+    elevation = Column(Float, nullable=True)
     grade_value = Column(Numeric, nullable=True)
 
     # Relationships

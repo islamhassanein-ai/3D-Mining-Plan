@@ -160,7 +160,34 @@ def export_pdf(
     collars = db.query(Collar).filter(Collar.project_id == project.id).all()
     collars_data = [{"hole_id": c.hole_id, "easting": c.easting, "northing": c.northing, "elevation": c.elevation} for c in collars]
 
+    from backend.src.services.grade_coloring import get_grade_color
+
+    def _interp_pos(trace, depth):
+        if not trace:
+            return (0.0, 0.0, 0.0)
+        if depth <= trace[0]['depth']:
+            p = trace[0]
+        elif depth >= trace[-1]['depth']:
+            p = trace[-1]
+        else:
+            p = trace[-1]
+            for i in range(1, len(trace)):
+                p1, p2 = trace[i - 1], trace[i]
+                if p1['depth'] <= depth <= p2['depth']:
+                    d1, d2 = p1['depth'], p2['depth']
+                    if abs(d2 - d1) < 1e-9:
+                        p = p1
+                        break
+                    t = (depth - d1) / (d2 - d1)
+                    return (
+                        p1['x'] + t * (p2['x'] - p1['x']),
+                        p1['y'] + t * (p2['y'] - p1['y']),
+                        p1['z'] + t * (p2['z'] - p1['z'])
+                    )
+        return (p['x'], p['y'], p['z'])
+
     traces = []
+    assay_segments = []
     for c in collars:
         surveys = db.query(Survey).filter(Survey.collar_id == c.id).order_by(Survey.depth).all()
         if surveys:
@@ -172,6 +199,22 @@ def export_pdf(
                 "hole_id": c.hole_id,
                 "points": pts
             })
+
+            assays = db.query(AssayInterval).filter(
+                AssayInterval.collar_id == c.id,
+                AssayInterval.superseded_by.is_(None)
+            ).all()
+            for a in assays:
+                start = _interp_pos(pts, float(a.from_depth))
+                end = _interp_pos(pts, float(a.to_depth))
+                assay_segments.append({
+                    "hole_id": c.hole_id,
+                    "start": {"x": start[0], "y": start[1], "z": start[2]},
+                    "end": {"x": end[0], "y": end[1], "z": end[2]},
+                    "grade_value": float(a.grade_value),
+                    "grade_unit": a.grade_unit,
+                    "color": get_grade_color(float(a.grade_value), a.grade_unit)
+                })
 
     wireframes = db.query(Wireframe).filter(
         Wireframe.project_id == project.id,
@@ -210,7 +253,8 @@ def export_pdf(
         collars_data,
         traces,
         wireframe_intersects,
-        plane_params
+        plane_params,
+        assay_segments
     )
 
     return StreamingResponse(

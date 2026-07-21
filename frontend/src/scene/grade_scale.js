@@ -15,7 +15,12 @@ export const GRADE_BUCKETS = [
 // visibly thicker along the drill core / trench trace, matching the
 // reference viewer's "thickness as a grade cue" convention.
 export const DRILL_RADIUS_BY_BUCKET = [0.15, 0.22, 0.28, 0.35, 0.45, 0.6];
-export const TRENCH_RADIUS_BY_BUCKET = [0.5, 0.7, 0.9, 1.1, 1.4, 1.8];
+
+// Trenches are rendered as a vertical "grade profile fence" standing along
+// the channel-sample line rather than a round tube (round cross-sections
+// read as drill core, which is misleading for a surface channel sample) --
+// see trenches.js for the rationale. Height in meters per grade bucket.
+export const TRENCH_HEIGHT_BY_BUCKET = [0.4, 0.8, 1.6, 2.8, 4.5, 7.0];
 
 export function getGradeBucketIndex(gradeValue, gradeUnit = 'ppm') {
   let val = Number(gradeValue);

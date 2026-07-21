@@ -1,80 +1,148 @@
 import * as THREE from 'three';
 
-import { GRADE_BUCKETS, getGradeBucketIndex, TRENCH_RADIUS_BY_BUCKET } from './grade_scale.js';
+import { GRADE_BUCKETS, getGradeBucketIndex, TRENCH_HEIGHT_BY_BUCKET } from './grade_scale.js';
 
-// Six-bucket Au grade scale matching the backend (backend/src/services/grade_coloring.py)
-function getTrenchGradeColor(grade) {
-  if (grade === null || grade === undefined) return GRADE_BUCKETS[0].color;
-  return GRADE_BUCKETS[getGradeBucketIndex(grade)].color;
+// Reconstructs the sample-taking order along a trench from unordered
+// easting/northing points via greedy nearest-neighbor chaining. The API
+// doesn't guarantee row order, but trench channel samples are taken
+// sequentially along a roughly straight line, so nearest-neighbor from an
+// endpoint reliably recovers the walking order.
+function orderTrenchPoints(points) {
+  if (points.length <= 2) return points;
+
+  // Start from whichever point is farthest from the group's centroid --
+  // that's very likely one of the two ends of the line.
+  const cx = points.reduce((s, p) => s + p.easting, 0) / points.length;
+  const cy = points.reduce((s, p) => s + p.northing, 0) / points.length;
+  let startIdx = 0;
+  let maxDist = -1;
+  points.forEach((p, i) => {
+    const d = Math.hypot(p.easting - cx, p.northing - cy);
+    if (d > maxDist) { maxDist = d; startIdx = i; }
+  });
+
+  const remaining = points.slice();
+  const ordered = [remaining.splice(startIdx, 1)[0]];
+  while (remaining.length) {
+    const last = ordered[ordered.length - 1];
+    let nearestIdx = 0;
+    let nearestDist = Infinity;
+    remaining.forEach((p, i) => {
+      const d = Math.hypot(p.easting - last.easting, p.northing - last.northing);
+      if (d < nearestDist) { nearestDist = d; nearestIdx = i; }
+    });
+    ordered.push(remaining.splice(nearestIdx, 1)[0]);
+  }
+  return ordered;
+}
+
+function newAcc() {
+  return { positions: [], indices: [] };
+}
+
+// Appends a vertical ribbon quad standing on the ground between p0 and p1,
+// extruded straight up by `height`. Two triangles, no caps needed since
+// it's an open (double-sided) surface rather than a closed volume.
+function appendRibbonSegment(acc, p0, p1, height) {
+  const base = acc.positions.length / 3;
+  acc.positions.push(p0.x, p0.y, p0.z);
+  acc.positions.push(p0.x, p0.y + height, p0.z);
+  acc.positions.push(p1.x, p1.y, p1.z);
+  acc.positions.push(p1.x, p1.y + height, p1.z);
+  acc.indices.push(base, base + 2, base + 1);
+  acc.indices.push(base + 1, base + 2, base + 3);
 }
 
 export class TrenchesRenderer {
   constructor(scene) {
     this.scene = scene;
-    this.mesh = null;
     this.group = new THREE.Group();
-    this.group.name = 'trench-markers';
+    this.group.name = 'trench-fences';
     this.scene.add(this.group);
   }
 
+  // Trenches are shallow surface channel samples, not round drill core --
+  // rendering them as round tubes (like drillholes) made the two feel
+  // visually interchangeable at a glance. Instead each trench is drawn as
+  // a vertical "grade profile fence" standing along the walked line, with
+  // fence height (not tube radius) encoding the grade bucket. This is the
+  // standard way channel-sample results are shown in exploration grade
+  // profile diagrams, and it reads unambiguously as "surface line", not
+  // "borehole", from any camera angle.
   render(trenches, drillholes) {
     this.clear();
     if (!trenches || trenches.length === 0) return;
 
-    // Determine baseline elevation for trenches (average collar elevation)
+    // Baseline elevation fallback for legacy trench rows uploaded before
+    // elevation was captured -- average collar elevation keeps them roughly
+    // at surface level instead of collapsing to 0.
     let baselineElevation = 0.0;
     if (drillholes && drillholes.length > 0) {
       const sum = drillholes.reduce((s, dh) => s + dh.elevation, 0);
       baselineElevation = sum / drillholes.length;
     }
 
-    // Unit-radius sphere; per-instance scale drives actual radius so
-    // higher-grade trench samples render visibly larger (matching the
-    // drill-interval thickness-as-grade-cue convention).
-    const sphereGeom = new THREE.SphereGeometry(1.0, 8, 8);
-    const material = new THREE.MeshStandardMaterial({ roughness: 0.5, metalness: 0.1 });
-
-    this.mesh = new THREE.InstancedMesh(sphereGeom, material, trenches.length);
-    this.mesh.name = 'trenches-instanced';
-
-    const position = new THREE.Vector3();
-    const quaternion = new THREE.Quaternion();
-    const scale = new THREE.Vector3(1, 1, 1);
-    const matrix = new THREE.Matrix4();
-
-    for (let i = 0; i < trenches.length; i++) {
-      const t = trenches[i];
-      // Map to Three.js Y-up (Easting -> X, Elevation -> Y, Northing -> Z)
-      position.set(t.easting, baselineElevation, t.northing);
-
-      const bucketIdx = getGradeBucketIndex(t.grade_value ?? 0);
-      const radius = TRENCH_RADIUS_BY_BUCKET[bucketIdx];
-      scale.set(radius, radius, radius);
-
-      matrix.compose(position, quaternion, scale);
-      this.mesh.setMatrixAt(i, matrix);
-
-      const color = new THREE.Color(getTrenchGradeColor(t.grade_value));
-      this.mesh.setColorAt(i, color);
+    const groups = new Map();
+    for (const t of trenches) {
+      if (t.easting == null || t.northing == null) continue;
+      if (!groups.has(t.trench_id)) groups.set(t.trench_id, []);
+      groups.get(t.trench_id).push({
+        easting: t.easting,
+        northing: t.northing,
+        elevation: t.elevation != null ? t.elevation : baselineElevation,
+        grade: t.grade_value
+      });
     }
 
-    this.mesh.instanceMatrix.needsUpdate = true;
-    if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
-    
-    this.mesh.userData = {
-      type: 'trenches',
-      data: trenches
-    };
+    const accsByBucket = Array.from({ length: GRADE_BUCKETS.length }, () => newAcc());
 
-    this.group.add(this.mesh);
+    for (const points of groups.values()) {
+      const ordered = orderTrenchPoints(points);
+      for (let i = 0; i < ordered.length - 1; i++) {
+        const a = ordered[i], b = ordered[i + 1];
+        const p0 = new THREE.Vector3(a.easting, a.elevation, a.northing);
+        const p1 = new THREE.Vector3(b.easting, b.elevation, b.northing);
+        if (p0.distanceTo(p1) < 1e-6) continue;
+
+        const grade = b.grade != null ? b.grade : (a.grade != null ? a.grade : 0);
+        const bucketIdx = getGradeBucketIndex(grade);
+        appendRibbonSegment(accsByBucket[bucketIdx], p0, p1, TRENCH_HEIGHT_BY_BUCKET[bucketIdx]);
+      }
+    }
+
+    for (let b = 0; b < GRADE_BUCKETS.length; b++) {
+      const acc = accsByBucket[b];
+      if (acc.positions.length === 0) continue;
+
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(acc.positions), 3));
+      geometry.setIndex(acc.indices);
+      geometry.computeVertexNormals();
+
+      const material = new THREE.MeshStandardMaterial({
+        color: GRADE_BUCKETS[b].color,
+        roughness: 0.6,
+        metalness: 0.05,
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.92
+      });
+
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.userData = { type: 'trench_fence', bucket: b };
+      this.group.add(mesh);
+    }
   }
 
   clear() {
-    if (this.mesh) {
-      this.group.remove(this.mesh);
-      if (this.mesh.geometry) this.mesh.geometry.dispose();
-      if (this.mesh.material) this.mesh.material.dispose();
-      this.mesh = null;
+    this.group.traverse((child) => {
+      if (child.isMesh) {
+        if (child.geometry) child.geometry.dispose();
+        if (child.material) child.material.dispose();
+      }
+    });
+    while (this.group.children.length > 0) {
+      this.group.remove(this.group.children[0]);
     }
   }
 }

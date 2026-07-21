@@ -161,6 +161,7 @@ def get_project_scene(
             "trench_id": t.trench_id,
             "easting": t.easting,
             "northing": t.northing,
+            "elevation": t.elevation,
             "grade_value": float(t.grade_value) if t.grade_value is not None else None
         }
         for t in trenches
