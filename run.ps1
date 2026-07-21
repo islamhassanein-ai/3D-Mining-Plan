@@ -10,11 +10,30 @@
   Requires: Python venv already created at .\venv, Node deps already
   installed at .\frontend\node_modules, and a reachable Postgres instance
   matching $env:DATABASE_URL (see README.md).
+
+  If your local Postgres password isn't "postgres", create a `.env` file
+  (gitignored) next to this script with a line like:
+    DATABASE_URL=postgresql://postgres:YOUR_PASSWORD@localhost:5432/mining_db
+  so you don't have to set the env var by hand every run.
 #>
 
 $ErrorActionPreference = "Stop"
 $RepoRoot = $PSScriptRoot
 Set-Location $RepoRoot
+
+if (-not $env:DATABASE_URL) {
+    $envFile = Join-Path $RepoRoot ".env"
+    if (Test-Path $envFile) {
+        Get-Content $envFile | ForEach-Object {
+            if ($_ -match '^\s*DATABASE_URL\s*=\s*(.+)$') {
+                $env:DATABASE_URL = $Matches[1].Trim()
+            }
+        }
+        if ($env:DATABASE_URL) {
+            Write-Host "DATABASE_URL loaded from .env" -ForegroundColor Yellow
+        }
+    }
+}
 
 if (-not $env:DATABASE_URL) {
     $env:DATABASE_URL = "postgresql://postgres:postgres@localhost:5432/mining_db"
