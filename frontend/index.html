@@ -92,6 +92,34 @@
       font-weight: 700;
     }
     #app-header .meta .gold-val { color: var(--gold); }
+    #app-header .meta-group {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      position: relative;
+      padding-left: 28px;
+    }
+    #app-header .meta-group-label {
+      position: absolute;
+      left: 0;
+      top: 50%;
+      transform: translateY(-50%) rotate(0deg);
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      color: var(--gold);
+      writing-mode: vertical-rl;
+    }
+    #app-header .meta-divider {
+      width: 1px;
+      align-self: stretch;
+      background: var(--border-light);
+    }
+    @media (max-width: 1100px) {
+      #app-header .meta { gap: 12px; }
+      #app-header .meta-group { gap: 10px; }
+    }
     .app-body {
       display: grid;
       grid-template-columns: 280px 1fr 340px;
@@ -298,6 +326,7 @@
     }
     .vbtn:hover { background: #182338; border-color: var(--gold); color: var(--gold-soft); }
     .vbtn.wide { grid-column: 1 / 3; }
+    .vbtn.active { background: linear-gradient(135deg, #3a2f10, #1c1608); border-color: var(--gold); color: var(--gold-soft); }
     #reset-camera-btn {
       width: 100%;
       margin-top: 2px;
@@ -562,10 +591,21 @@
         </div>
       </div>
       <div class="meta" id="header-stats" style="display:none;">
-        <div><b id="stat-holes">0</b>Drill Holes</div>
-        <div><b id="stat-trenches">0</b>Trenches</div>
-        <div><b id="stat-assays">0</b>Assay Points</div>
-        <div><b id="stat-peak" class="gold-val">-</b>Peak Grade</div>
+        <div class="meta-group">
+          <span class="meta-group-label">DD</span>
+          <div><b id="dd-sum-holes">0</b>Holes</div>
+          <div><b id="dd-sum-meters">0</b>Meters</div>
+          <div><b id="dd-sum-avg">0</b>Avg g/t</div>
+          <div><b id="dd-sum-peak" class="gold-val">0</b>Peak g/t</div>
+        </div>
+        <div class="meta-divider"></div>
+        <div class="meta-group">
+          <span class="meta-group-label">Trenches</span>
+          <div><b id="tr-sum-count">0</b>Trenches</div>
+          <div><b id="tr-sum-samples">0</b>Samples</div>
+          <div><b id="tr-sum-avg">0</b>Avg g/t</div>
+          <div><b id="tr-sum-peak" class="gold-val">0</b>Peak g/t</div>
+        </div>
       </div>
     </div>
 
@@ -587,27 +627,6 @@
       <div class="sidebar-content">
         <!-- Visualizer Controls (populated when project active) -->
         <div id="visualizer-controls" class="sidebar-section" style="display: none;">
-
-          <!-- DD (Drillhole) + Trenches Summary -->
-          <div class="section-title">Project Summary</div>
-          <div class="control-card">
-            <span class="control-label" style="color:#9ca3af;">DD Summary (Drillholes)</span>
-            <div class="stat-grid">
-              <div class="stat"><div class="v" id="dd-sum-holes">0</div><div class="l">Holes</div></div>
-              <div class="stat"><div class="v" id="dd-sum-meters">0</div><div class="l">Meters Drilled</div></div>
-              <div class="stat"><div class="v" id="dd-sum-avg">0</div><div class="l">Avg Grade (g/t)</div></div>
-              <div class="stat gold"><div class="v" id="dd-sum-peak">0</div><div class="l">Peak Grade (g/t)</div></div>
-            </div>
-          </div>
-          <div class="control-card">
-            <span class="control-label" style="color:#f72809;">Trenches Summary</span>
-            <div class="stat-grid">
-              <div class="stat"><div class="v" id="tr-sum-count">0</div><div class="l">Trenches</div></div>
-              <div class="stat"><div class="v" id="tr-sum-samples">0</div><div class="l">Samples</div></div>
-              <div class="stat"><div class="v" id="tr-sum-avg">0</div><div class="l">Avg Grade (g/t)</div></div>
-              <div class="stat gold"><div class="v" id="tr-sum-peak">0</div><div class="l">Peak Grade (g/t)</div></div>
-            </div>
-          </div>
 
           <div class="section-title">Visual Controls</div>
 
@@ -635,6 +654,15 @@
           <div class="control-card">
             <span class="control-label">Layers</span>
             <div id="layer-toggles-container"></div>
+          </div>
+
+          <!-- Topography Display Mode -->
+          <div class="control-card">
+            <span class="control-label">Topography Display</span>
+            <div class="view-btns">
+              <button class="vbtn active" id="topo-mode-mesh" data-mode="mesh">Terrain Mesh</button>
+              <button class="vbtn" id="topo-mode-points" data-mode="points">Point Cloud</button>
+            </div>
           </div>
 
           <!-- Coordinate System -->
@@ -747,7 +775,7 @@
   <!-- Modals Container -->
   <div id="modal-container" style="display: none;"></div>
 
-  <script src="dist/bundle.js?v=10"></script>
+  <script src="dist/bundle.js?v=11"></script>
   <script>
     // Initialize application logic
     const API_BASE = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') ? 'http://localhost:8000' : '';
@@ -946,6 +974,7 @@
 
         // Wire Go-to-Coordinate + Coordinate System controls
         setupGotoCoordinate(viewport3D, data);
+        setupTopoModeToggle(viewport3D);
         await setupUtmZoneControl(projectId);
 
         // Update header project name + summary stats
@@ -986,7 +1015,8 @@
             rulerBtn.textContent = 'Activate';
           }
         });
-        
+        rulerTool.setCollars(data.drillholes);
+
         rulerBtn.onclick = () => {
           const isActive = rulerBtn.classList.toggle('active');
           if (isActive) {
@@ -1014,6 +1044,21 @@
         loading.style.display = 'none';
         alert(`Failed to load project: ${err.message}`);
       }
+    }
+
+    function setupTopoModeToggle(viewport3D) {
+      const meshBtn = document.getElementById('topo-mode-mesh');
+      const pointsBtn = document.getElementById('topo-mode-points');
+      if (!meshBtn || !pointsBtn || !viewport3D.topographyRenderer) return;
+
+      const setMode = (mode) => {
+        viewport3D.topographyRenderer.setDisplayMode(mode);
+        meshBtn.classList.toggle('active', mode === 'mesh');
+        pointsBtn.classList.toggle('active', mode === 'points');
+      };
+      meshBtn.onclick = () => setMode('mesh');
+      pointsBtn.onclick = () => setMode('points');
+      setMode('mesh');
     }
 
     function setupGotoCoordinate(viewport3D, data) {
@@ -1084,23 +1129,7 @@
         document.getElementById('header-project-name').textContent = opt ? `— ${opt.textContent}` : '— Grade Control';
       }
 
-      const drillholes = data.drillholes || [];
-      let assayCount = 0, peakGrade = 0;
-      for (const dh of drillholes) {
-        for (const a of dh.assays) {
-          assayCount++;
-          if (a.grade_value > peakGrade) peakGrade = a.grade_value;
-        }
-      }
-
-      const trenchCount = (data.trenches || []).length;
-
-      document.getElementById('stat-holes').textContent = drillholes.length;
-      document.getElementById('stat-trenches').textContent = trenchCount;
-      document.getElementById('stat-assays').textContent = assayCount;
-      document.getElementById('stat-peak').textContent = assayCount ? `${peakGrade.toFixed(1)} g/t` : '-';
       document.getElementById('header-stats').style.display = 'flex';
-
       updateDdAndTrenchSummary(data);
     }
 
@@ -1296,6 +1325,7 @@
         // Wire Go-to-Coordinate; UTM zone is an owner-only setting, so hide
         // that control for shared/read-only viewers instead of wiring it.
         setupGotoCoordinate(viewport3D, data);
+        setupTopoModeToggle(viewport3D);
         const utmCard = document.getElementById('utm-zone-select').closest('.control-card');
         if (utmCard) utmCard.style.display = 'none';
 
@@ -1336,7 +1366,8 @@
             rulerBtn.textContent = 'Activate';
           }
         });
-        
+        rulerTool.setCollars(data.drillholes);
+
         rulerBtn.onclick = () => {
           const isActive = rulerBtn.classList.toggle('active');
           if (isActive) {

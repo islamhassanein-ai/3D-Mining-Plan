@@ -7,6 +7,7 @@
     "build": "esbuild src/scene/scene.js --bundle --minify --outfile=dist/bundle.js"
   },
   "dependencies": {
+    "delaunator": "^5.1.0",
     "three": "^0.160.0"
   },
   "devDependencies": {

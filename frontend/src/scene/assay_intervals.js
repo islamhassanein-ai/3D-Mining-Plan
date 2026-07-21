@@ -53,12 +53,50 @@ export class AssayIntervals {
     // actual radius so grade buckets can render at different thicknesses
     // (see updateMeshMatrices -- higher grade renders visibly thicker).
     const geometry = new THREE.CylinderGeometry(1.0, 1.0, 1.0, 8);
-    // Move geometry origin to bottom so positioning is easier, or leave at center
-    // Let's keep it centered which matches compose(mid, quaternion, scale)
+
+    // Per-instance grade, consumed on the GPU (see material.onBeforeCompile
+    // below) so the cutoff slider never has to touch CPU-side matrices --
+    // moving the cutoff only updates a single shader uniform, independent
+    // of interval count, for filtering that stays at render framerate no
+    // matter how many holes/intervals are loaded.
+    const gradeArray = new Float32Array(this.intervalsData.length);
+    for (let i = 0; i < this.intervalsData.length; i++) {
+      gradeArray[i] = this.intervalsData[i].grade_value;
+    }
+    geometry.setAttribute('aGrade', new THREE.InstancedBufferAttribute(gradeArray, 1));
+
     const material = new THREE.MeshStandardMaterial({
       roughness: 0.4,
       metalness: 0.1
     });
+    material.onBeforeCompile = (shader) => {
+      shader.uniforms.uCutoff = { value: this.currentCutoff };
+
+      shader.vertexShader = shader.vertexShader
+        .replace(
+          '#include <common>',
+          `attribute float aGrade;\nvarying float vGrade;\n#include <common>`
+        )
+        .replace(
+          '#include <begin_vertex>',
+          `#include <begin_vertex>\nvGrade = aGrade;`
+        );
+
+      shader.fragmentShader = shader.fragmentShader
+        .replace(
+          '#include <common>',
+          `uniform float uCutoff;\nvarying float vGrade;\n#include <common>`
+        )
+        .replace(
+          '#include <clipping_planes_fragment>',
+          `#include <clipping_planes_fragment>\nif (vGrade < uCutoff) discard;`
+        );
+
+      material.userData.shader = shader;
+    };
+    // Force WebGL program recompilation once so onBeforeCompile actually
+    // runs before the first setGradeCutoff() call needs shader.uniforms.
+    material.customProgramCacheKey = () => 'assay-cutoff-shader';
 
     this.mesh = new THREE.InstancedMesh(geometry, material, this.intervalsData.length);
     this.mesh.name = 'assay-intervals-instanced';
@@ -88,14 +126,14 @@ export class AssayIntervals {
       const data = this.intervalsData[i];
       const effectiveColor = (data.qaqc_flag && QAQC_COLORS[data.qaqc_flag]) || data.color;
       const colorObj = new THREE.Color(effectiveColor);
-      
+
       // Calculate length and direction
       const direction = new THREE.Vector3().subVectors(data.end, data.start);
       const length = direction.length();
-      
+
       // Midpoint
       position.addVectors(data.start, data.end).multiplyScalar(0.5);
-      
+
       // Rotation
       if (length > 0) {
         const dirNormalized = direction.clone().normalize();
@@ -104,12 +142,12 @@ export class AssayIntervals {
         quaternion.setIdentity();
       }
 
-      // Hide the instance if it's below the grade cutoff, or if LOD has
-      // determined its drillhole is far from the camera (rendered as a
-      // simplified trace line instead, per research.md Decision 4).
-      const hiddenByCutoff = data.grade_value < this.currentCutoff;
+      // Grade cutoff is applied on the GPU via the uCutoff/aGrade shader
+      // uniform+attribute (fragment discard), not here -- only LOD
+      // visibility (which changes rarely, on camera movement) still
+      // touches the CPU-side instance matrix.
       const hiddenByLod = this.lodStates ? this.lodStates.get(data.collar_id) === false : false;
-      if (hiddenByCutoff || hiddenByLod) {
+      if (hiddenByLod) {
         scale.set(0, 0, 0);
       } else {
         // Radius scales with grade bucket so higher-grade intervals render
@@ -131,7 +169,11 @@ export class AssayIntervals {
 
   setGradeCutoff(cutoffValue) {
     this.currentCutoff = Number(cutoffValue);
-    this.updateMeshMatrices();
+    if (this.mesh && this.mesh.material.userData.shader) {
+      // GPU-side update only -- no per-instance CPU work, so this stays
+      // instant (same-frame) regardless of how many intervals are loaded.
+      this.mesh.material.userData.shader.uniforms.uCutoff.value = this.currentCutoff;
+    }
   }
 
   setLodStates(lodStates) {
