@@ -14,6 +14,7 @@ export class LayerTogglePanel {
       { key: 'wireframes', label: 'Vein Wireframes', color: '#ec4899', get: () => viewport.wireframesRenderer && viewport.wireframesRenderer.group },
       { key: 'structural', label: 'Structural Readings', color: '#eab308', get: () => viewport.structuralReadingsRenderer && viewport.structuralReadingsRenderer.group },
       { key: 'labels', label: 'Borehole Labels', color: '#e8c76b', get: () => viewport.boreholeLabelsRenderer && viewport.boreholeLabelsRenderer.group, defaultOff: true },
+      { key: 'trenchLabels', label: 'Trench Labels', color: '#fca5a5', get: () => viewport.trenchLabelsRenderer && viewport.trenchLabelsRenderer.group, defaultOff: true },
     ];
 
     // Track desired visibility per layer so it survives re-renders

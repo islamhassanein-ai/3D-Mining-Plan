@@ -260,5 +260,8 @@ def export_pdf(
     return StreamingResponse(
         io.BytesIO(pdf_bytes),
         media_type="application/pdf",
-        headers={"Content-Disposition": f"attachment; filename={project.name.replace(' ', '_')}_section.pdf"}
+        headers={
+            "Content-Disposition": f"attachment; filename={project.name.replace(' ', '_')}_section.pdf",
+            "Cache-Control": "no-store"
+        }
     )

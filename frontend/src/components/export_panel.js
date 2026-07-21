@@ -219,7 +219,8 @@ export class ExportPanel {
 
       const routePaths = { csv: 'data.csv', pdf: 'section.pdf', dxf: 'wireframes.dxf' };
       const res = await fetch(`${apiBase}/projects/${this.projectId}/export/${routePaths[format]}${query}`, {
-        headers
+        headers,
+        cache: 'no-store'
       });
 
       if (!res.ok) {
