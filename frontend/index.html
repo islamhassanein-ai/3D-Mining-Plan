@@ -124,6 +124,9 @@
       height: 100%;
       position: relative;
     }
+    .main-viewport-container.hide-section {
+      grid-template-rows: 1fr 0px;
+    }
     #viewport-3d {
       width: 100%;
       height: 100%;
@@ -134,7 +137,33 @@
       border-top: 1px solid var(--border-light);
       height: 100%;
       background: var(--bg-darker);
+      overflow: hidden;
     }
+    .main-viewport-container.hide-section #section-view-container {
+      display: none;
+    }
+    #section-edge-tab {
+      position: absolute;
+      bottom: 380px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 15;
+      background: rgba(16, 24, 40, 0.9);
+      border: 1px solid var(--border-light);
+      border-bottom: none;
+      color: var(--text-muted);
+      width: 46px;
+      height: 18px;
+      cursor: pointer;
+      font-size: 11px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      backdrop-filter: blur(4px);
+      border-radius: 6px 6px 0 0;
+    }
+    #section-edge-tab:hover { color: var(--gold); border-color: var(--gold); }
+    .main-viewport-container.hide-section #section-edge-tab { bottom: 0; }
     
     /* Layout Elements */
     .sidebar-header {
@@ -666,6 +695,9 @@
       <!-- Synced 2D Cross-section sheet -->
       <div id="section-view-container"></div>
 
+      <!-- Collapse tab for the 2D Cross-Section panel -->
+      <button id="section-edge-tab" title="Hide/show 2D cross-section">&#9660;</button>
+
       <!-- Camera Toolbar overlay -->
       <div id="toolbar-3d-container" class="floating-toolbar"></div>
     </main>
@@ -755,6 +787,15 @@
         setTimeout(() => window.dispatchEvent(new Event('resize')), 230);
       });
 
+      // 2D Cross-Section panel collapse tab
+      const sectionTab = document.getElementById('section-edge-tab');
+      sectionTab.addEventListener('click', () => {
+        const mainViewport = document.querySelector('.main-viewport-container');
+        const collapsed = mainViewport.classList.toggle('hide-section');
+        sectionTab.innerHTML = collapsed ? '&#9650;' : '&#9660;';
+        window.dispatchEvent(new Event('resize'));
+      });
+
       // Setup Project Creation Action
       document.getElementById('create-project-btn').addEventListener('click', () => showCreateProjectModal());
 
@@ -764,10 +805,27 @@
 
     async function checkAuth() {
       const authDiv = document.getElementById('auth-status-div');
+      const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
       try {
-        const token = localStorage.getItem('mining_session_token');
+        let token = localStorage.getItem('mining_session_token');
+
+        // A stored token isn't necessarily still valid -- session tokens
+        // expire after 60 minutes (see backend/src/api/auth.py), and a
+        // silently-stale token previously left the app showing "Signed In"
+        // while every API call underneath kept failing with 401 (project
+        // list, delete button, etc. all silently broken). Verify it
+        // actually works before trusting it.
+        if (token) {
+          const probe = await fetch(`${API_BASE}/workspace/projects`, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          if (probe.status === 401) {
+            localStorage.removeItem('mining_session_token');
+            token = null;
+          }
+        }
+
         if (!token) {
-          const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
           if (isDev) {
             // Dev mode has no real email delivery -- sign in silently
             // instead of making every fresh session require a manual
@@ -782,7 +840,6 @@
           return;
         }
 
-        // Mock success or call token validation
         authDiv.innerHTML = `Signed In | Developer`;
       } catch (err) {
         showLoginModal();
