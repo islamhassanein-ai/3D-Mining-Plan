@@ -188,12 +188,16 @@
     }
     .styled-select {
       flex: 1;
+      min-width: 0;
       background: rgba(0, 0, 0, 0.4);
       border: 1px solid var(--border-light);
       color: var(--text-main);
       padding: 8px;
       border-radius: 6px;
       font-size: 0.85rem;
+    }
+    .project-selector-container .btn-icon {
+      flex-shrink: 0;
     }
     .btn-icon {
       background: linear-gradient(135deg, var(--gold) 0%, #8a6d1f 100%);
@@ -583,6 +587,27 @@
       <div class="sidebar-content">
         <!-- Visualizer Controls (populated when project active) -->
         <div id="visualizer-controls" class="sidebar-section" style="display: none;">
+
+          <!-- DD (Drillhole) + Trenches Summary -->
+          <div class="section-title">Project Summary</div>
+          <div class="control-card">
+            <span class="control-label" style="color:#9ca3af;">DD Summary (Drillholes)</span>
+            <div class="stat-grid">
+              <div class="stat"><div class="v" id="dd-sum-holes">0</div><div class="l">Holes</div></div>
+              <div class="stat"><div class="v" id="dd-sum-meters">0</div><div class="l">Meters Drilled</div></div>
+              <div class="stat"><div class="v" id="dd-sum-avg">0</div><div class="l">Avg Grade (g/t)</div></div>
+              <div class="stat gold"><div class="v" id="dd-sum-peak">0</div><div class="l">Peak Grade (g/t)</div></div>
+            </div>
+          </div>
+          <div class="control-card">
+            <span class="control-label" style="color:#f72809;">Trenches Summary</span>
+            <div class="stat-grid">
+              <div class="stat"><div class="v" id="tr-sum-count">0</div><div class="l">Trenches</div></div>
+              <div class="stat"><div class="v" id="tr-sum-samples">0</div><div class="l">Samples</div></div>
+              <div class="stat"><div class="v" id="tr-sum-avg">0</div><div class="l">Avg Grade (g/t)</div></div>
+              <div class="stat gold"><div class="v" id="tr-sum-peak">0</div><div class="l">Peak Grade (g/t)</div></div>
+            </div>
+          </div>
 
           <div class="section-title">Visual Controls</div>
 
@@ -1075,6 +1100,45 @@
       document.getElementById('stat-assays').textContent = assayCount;
       document.getElementById('stat-peak').textContent = assayCount ? `${peakGrade.toFixed(1)} g/t` : '-';
       document.getElementById('header-stats').style.display = 'flex';
+
+      updateDdAndTrenchSummary(data);
+    }
+
+    function updateDdAndTrenchSummary(data) {
+      // DD (drillhole) summary: total meters drilled is taken from each
+      // hole's deepest assay interval, not the raw trace length, so it
+      // reflects sampled/logged depth rather than the full drilled hole.
+      const drillholes = data.drillholes || [];
+      let totalMeters = 0, ddGradeSum = 0, ddGradeCount = 0, ddPeak = 0;
+      for (const dh of drillholes) {
+        let maxDepth = 0;
+        for (const a of dh.assays) {
+          if (a.to_depth > maxDepth) maxDepth = a.to_depth;
+          ddGradeSum += a.grade_value;
+          ddGradeCount++;
+          if (a.grade_value > ddPeak) ddPeak = a.grade_value;
+        }
+        totalMeters += maxDepth;
+      }
+      document.getElementById('dd-sum-holes').textContent = drillholes.length;
+      document.getElementById('dd-sum-meters').textContent = `${totalMeters.toFixed(0)}m`;
+      document.getElementById('dd-sum-avg').textContent = ddGradeCount ? (ddGradeSum / ddGradeCount).toFixed(2) : '0';
+      document.getElementById('dd-sum-peak').textContent = ddPeak.toFixed(1);
+
+      // Trenches summary
+      const trenches = data.trenches || [];
+      const trenchIds = new Set(trenches.map(t => t.trench_id));
+      let trGradeSum = 0, trGradeCount = 0, trPeak = 0;
+      for (const t of trenches) {
+        if (t.grade_value == null) continue;
+        trGradeSum += t.grade_value;
+        trGradeCount++;
+        if (t.grade_value > trPeak) trPeak = t.grade_value;
+      }
+      document.getElementById('tr-sum-count').textContent = trenchIds.size;
+      document.getElementById('tr-sum-samples').textContent = trenches.length;
+      document.getElementById('tr-sum-avg').textContent = trGradeCount ? (trGradeSum / trGradeCount).toFixed(2) : '0';
+      document.getElementById('tr-sum-peak').textContent = trPeak.toFixed(1);
     }
 
     function unloadActiveProject() {
