@@ -634,6 +634,7 @@
           <div class="control-card">
             <span class="control-label">Au Grade Cutoff (g/t)</span>
             <div id="cutoff-slider-container"></div>
+            <div id="grade-histogram-container" style="margin-top:4px;"></div>
           </div>
 
           <!-- Grade Legend -->
@@ -775,7 +776,7 @@
   <!-- Modals Container -->
   <div id="modal-container" style="display: none;"></div>
 
-  <script src="dist/bundle.js?v=11"></script>
+  <script src="dist/bundle.js?v=12"></script>
   <script>
     // Initialize application logic
     const API_BASE = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') ? 'http://localhost:8000' : '';
@@ -985,10 +986,17 @@
         layerContainer.innerHTML = '';
         new window.LayerTogglePanel(layerContainer, viewport3D);
 
-        // Setup Cutoff Slider
+        // Setup Cutoff Slider + live grade-distribution histogram
         const sliderContainer = document.getElementById('cutoff-slider-container');
         sliderContainer.innerHTML = '';
-        const cutoff = new window.CutoffSlider(sliderContainer, (val) => viewport3D.assaysRenderer.setGradeCutoff(val));
+        const histoContainer = document.getElementById('grade-histogram-container');
+        histoContainer.innerHTML = '';
+        const gradeHistogram = new window.GradeHistogram(histoContainer);
+        gradeHistogram.setData(data.drillholes);
+        const cutoff = new window.CutoffSlider(sliderContainer, (val) => {
+          viewport3D.assaysRenderer.setGradeCutoff(val);
+          gradeHistogram.setCutoff(val);
+        });
         
         // Setup Sync 2D Section Slicing Panel
         const sectionContainer = document.getElementById('section-view-container');
@@ -1336,10 +1344,17 @@
         layerContainer.innerHTML = '';
         new window.LayerTogglePanel(layerContainer, viewport3D);
 
-        // Setup Cutoff Slider
+        // Setup Cutoff Slider + live grade-distribution histogram
         const sliderContainer = document.getElementById('cutoff-slider-container');
         sliderContainer.innerHTML = '';
-        const cutoff = new window.CutoffSlider(sliderContainer, (val) => viewport3D.assaysRenderer.setGradeCutoff(val));
+        const histoContainer = document.getElementById('grade-histogram-container');
+        histoContainer.innerHTML = '';
+        const gradeHistogram = new window.GradeHistogram(histoContainer);
+        gradeHistogram.setData(data.drillholes);
+        const cutoff = new window.CutoffSlider(sliderContainer, (val) => {
+          viewport3D.assaysRenderer.setGradeCutoff(val);
+          gradeHistogram.setCutoff(val);
+        });
         
         // Setup Sync 2D Section Slicing Panel
         const sectionContainer = document.getElementById('section-view-container');
