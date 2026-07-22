@@ -6,6 +6,7 @@ import { LithologyIntervals } from './lithology_intervals.js';
 import { SceneLoader } from './scene_loader.js';
 import { SceneToolbar } from '../components/toolbar.js';
 import { SceneSelection } from './selection.js';
+import { SceneHover } from './hover.js';
 import { InspectorPanel } from '../components/inspector_panel.js';
 import { CutoffSlider } from '../components/cutoff_slider.js';
 import { GradeHistogram } from '../components/grade_histogram.js';
@@ -141,12 +142,14 @@ export function init3DViewport(container, options = {}) {
 
   // 12. Animation render loop
   let animationFrameId = null;
+  let hover = null;
   function animate() {
     animationFrameId = requestAnimationFrame(animate);
     controls.update();
     lodManager.update();
     boreholeLabelsRenderer.update(camera);
     trenchLabelsRenderer.update(camera);
+    if (hover) hover.update();
 
     // Main render pass
     renderer.setViewport(0, 0, domContainer.clientWidth, domContainer.clientHeight);
@@ -181,6 +184,7 @@ export function init3DViewport(container, options = {}) {
       resizeObserver.disconnect();
       window.removeEventListener('keydown', handleKeydown);
       if (this.selection) this.selection.dispose();
+      if (this.hover) this.hover.dispose();
       controls.dispose();
       tracesRenderer.clear();
       assaysRenderer.clear();
@@ -202,6 +206,12 @@ export function init3DViewport(container, options = {}) {
   if (options.onSelect) {
     viewport.selection = new SceneSelection(viewport, options.onSelect);
   }
+
+  // Hover feedback (gold glow sleeve + tooltip). Assigned to the closure
+  // `hover` so the render loop eases its fade each frame.
+  hover = new SceneHover(viewport);
+  viewport.hover = hover;
+  viewport.hoverRenderer = hover; // consistent naming for scene_loader
 
   return viewport;
 }

@@ -848,7 +848,7 @@
     </div>
   </div>
 
-  <script src="dist/bundle.js?v=16"></script>
+  <script src="dist/bundle.js?v=17"></script>
   <script>
     // Initialize application logic
     const API_BASE = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') ? 'http://localhost:8000' : '';
@@ -1131,6 +1131,7 @@
           }
         });
         rulerTool.setCollars(data.drillholes);
+        if (viewport3D.hover) viewport3D.hover.setData(data.drillholes);
 
         rulerBtn.onclick = () => {
           const isActive = rulerBtn.classList.toggle('active');
@@ -1489,6 +1490,7 @@
           }
         });
         rulerTool.setCollars(data.drillholes);
+        if (viewport3D.hover) viewport3D.hover.setData(data.drillholes);
 
         rulerBtn.onclick = () => {
           const isActive = rulerBtn.classList.toggle('active');
