@@ -121,8 +121,7 @@
       #app-header .meta-group { gap: 10px; }
     }
     .app-body {
-      display: grid;
-      grid-template-columns: 280px 1fr 340px;
+      display: flex;
       min-height: 0;
       overflow: hidden;
     }
@@ -145,30 +144,39 @@
       z-index: 10;
       overflow-y: auto;
     }
-    /* Main viewport block */
+    /* Main viewport block: flex column so the 2D section can slide out
+       (margin-based) reliably -- grid-row transitions with an fr unit don't
+       interpolate in some engines. */
     .main-viewport-container {
-      display: grid;
-      grid-template-rows: 1fr 380px;
+      flex: 1 1 0;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
       height: 100%;
       position: relative;
-    }
-    .main-viewport-container.hide-section {
-      grid-template-rows: 1fr 0px;
+      overflow: hidden;
+      --panel-anim: 0.26s;
     }
     #viewport-3d {
+      flex: 1 1 0;
+      min-height: 0;
       width: 100%;
-      height: 100%;
       position: relative;
     }
-    /* Slicing panel container at bottom */
+    /* Slicing panel container at bottom: fixed height + slide down via
+       negative margin so it never squishes; the 3D view (flex:1) grows
+       smoothly into the freed height. */
     #section-view-container {
       border-top: 1px solid var(--border-light);
-      height: 100%;
+      height: 380px;
+      flex-shrink: 0;
       background: var(--bg-darker);
       overflow: hidden;
+      transition: margin-bottom var(--panel-anim) ease;
     }
     .main-viewport-container.hide-section #section-view-container {
-      display: none;
+      margin-bottom: -380px;
+      pointer-events: none;
     }
     #section-edge-tab {
       position: absolute;
@@ -176,19 +184,20 @@
       left: 50%;
       transform: translateX(-50%);
       z-index: 15;
-      background: rgba(16, 24, 40, 0.9);
+      background: rgba(16, 24, 40, 0.92);
       border: 1px solid var(--border-light);
       border-bottom: none;
       color: var(--text-muted);
-      width: 46px;
-      height: 18px;
+      width: 52px;
+      height: 16px;
       cursor: pointer;
-      font-size: 11px;
+      font-size: 10px;
       display: flex;
       align-items: center;
       justify-content: center;
       backdrop-filter: blur(4px);
       border-radius: 6px 6px 0 0;
+      transition: bottom var(--panel-anim) ease, color 0.15s ease, border-color 0.15s ease;
     }
     #section-edge-tab:hover { color: var(--gold); border-color: var(--gold); }
     .main-viewport-container.hide-section #section-edge-tab { bottom: 0; }
@@ -528,53 +537,58 @@
       line-height: 1;
     }
     #hint-close-btn:hover { color: var(--text-main); }
-    /* Sidebar collapse: width-animated (not display:none) so each panel
-       shrinks in place, with a small tab attached to its own edge -- not a
-       pair of unrelated buttons floating in one corner. */
-    .app-body {
-      position: relative;
-    }
-    .app-body.hide-left { grid-template-columns: 0px 1fr 340px; }
-    .app-body.hide-right { grid-template-columns: 280px 1fr 0px; }
-    .app-body.hide-left.hide-right { grid-template-columns: 0px 1fr 0px; }
-    .sidebar, .right-sidebar {
+    /* Panel collapse: each fixed-width sidebar slides out under a negative
+       margin (bulletproof, unlike fr-grid transitions) while the flex:1
+       viewport grows smoothly into the freed space. Content keeps its full
+       width and is clipped by .app-body overflow:hidden -- no reflow/squish
+       -- and each edge tab rides along with matched timing. */
+    .app-body { position: relative; --panel-anim: 0.26s; }
+    .sidebar {
+      width: 280px;
+      flex-shrink: 0;
       overflow: hidden;
-      min-width: 0;
-      transition: opacity 0.15s ease;
+      transition: margin-left var(--panel-anim) ease;
     }
-    .app-body.hide-left .sidebar { opacity: 0; pointer-events: none; }
-    .app-body.hide-right .right-sidebar { opacity: 0; pointer-events: none; }
+    .right-sidebar {
+      width: 340px;
+      flex-shrink: 0;
+      overflow-y: auto;
+      overflow-x: hidden;
+      transition: margin-right var(--panel-anim) ease;
+    }
+    .app-body.hide-left .sidebar { margin-left: -280px; pointer-events: none; }
+    .app-body.hide-right .right-sidebar { margin-right: -340px; pointer-events: none; }
     .panel-edge-tab {
       position: absolute;
       top: 50%;
-      transform: translateY(-50%);
       z-index: 15;
-      background: rgba(16, 24, 40, 0.9);
+      background: rgba(16, 24, 40, 0.92);
       border: 1px solid var(--border-light);
       color: var(--text-muted);
-      width: 18px;
-      height: 46px;
+      width: 16px;
+      height: 52px;
       cursor: pointer;
-      font-size: 11px;
+      font-size: 10px;
       display: flex;
       align-items: center;
       justify-content: center;
       backdrop-filter: blur(4px);
-      transition: left 0.22s ease, right 0.22s ease, color 0.15s ease;
+      transition: left var(--panel-anim) ease, right var(--panel-anim) ease,
+                  color 0.15s ease, border-color 0.15s ease;
     }
     .panel-edge-tab:hover { color: var(--gold); border-color: var(--gold); }
     #left-edge-tab {
       left: 280px;
+      transform: translate(-50%, -50%);
       border-radius: 0 6px 6px 0;
-      border-left: none;
     }
-    .app-body.hide-left #left-edge-tab { left: 0; }
+    .app-body.hide-left #left-edge-tab { left: 8px; }
     #right-edge-tab {
       right: 340px;
+      transform: translate(50%, -50%);
       border-radius: 6px 0 0 6px;
-      border-right: none;
     }
-    .app-body.hide-right #right-edge-tab { right: 0; }
+    .app-body.hide-right #right-edge-tab { right: 8px; }
   </style>
 </head>
 <body>
@@ -776,7 +790,7 @@
   <!-- Modals Container -->
   <div id="modal-container" style="display: none;"></div>
 
-  <script src="dist/bundle.js?v=12"></script>
+  <script src="dist/bundle.js?v=15"></script>
   <script>
     // Initialize application logic
     const API_BASE = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') ? 'http://localhost:8000' : '';
@@ -830,15 +844,28 @@
       const appBody = document.getElementById('app-body');
       const leftTab = document.getElementById('left-edge-tab');
       const rightTab = document.getElementById('right-edge-tab');
+      // Keep the WebGL viewport in step with the panel animation by firing
+      // resize across its whole duration, not just at the end -- otherwise
+      // the canvas visibly stretches until a single trailing resize snaps
+      // it back. (scene.js's ResizeObserver also catches the final size.)
+      const animateResize = () => {
+        const start = performance.now();
+        const tick = () => {
+          window.dispatchEvent(new Event('resize'));
+          if (performance.now() - start < 300) requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+      };
+
       leftTab.addEventListener('click', () => {
         const collapsed = appBody.classList.toggle('hide-left');
         leftTab.innerHTML = collapsed ? '&#9654;' : '&#9664;';
-        setTimeout(() => window.dispatchEvent(new Event('resize')), 230);
+        animateResize();
       });
       rightTab.addEventListener('click', () => {
         const collapsed = appBody.classList.toggle('hide-right');
         rightTab.innerHTML = collapsed ? '&#9664;' : '&#9654;';
-        setTimeout(() => window.dispatchEvent(new Event('resize')), 230);
+        animateResize();
       });
 
       // 2D Cross-Section panel collapse tab
@@ -847,7 +874,7 @@
         const mainViewport = document.querySelector('.main-viewport-container');
         const collapsed = mainViewport.classList.toggle('hide-section');
         sectionTab.innerHTML = collapsed ? '&#9650;' : '&#9660;';
-        window.dispatchEvent(new Event('resize'));
+        animateResize();
       });
 
       // Setup Project Creation Action
