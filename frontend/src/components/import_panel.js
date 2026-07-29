@@ -55,16 +55,89 @@ export class ImportPanel {
         color: #9ca3af;
         margin-bottom: 24px;
       }
+      /* ── Combined (primary) dropzone ── */
+      .combined-dropzone-wrap {
+        margin-bottom: 20px;
+      }
+      .combined-label-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 8px;
+      }
+      .combined-badge {
+        background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+        color: white;
+        font-size: 0.65rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        padding: 2px 8px;
+        border-radius: 9999px;
+      }
+      .combined-label-text {
+        font-size: 0.875rem;
+        font-weight: 700;
+        color: #f3f4f6;
+      }
+      .combined-hint {
+        font-size: 0.75rem;
+        color: #6b7280;
+        margin-top: 4px;
+      }
+      .combined-dropzone {
+        border: 2px dashed rgba(59, 130, 246, 0.4);
+        border-radius: 10px;
+        padding: 28px 20px;
+        text-align: center;
+        cursor: pointer;
+        background: rgba(59, 130, 246, 0.04);
+        transition: all 0.2s ease;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 10px;
+      }
+      .combined-dropzone:hover {
+        border-color: #3b82f6;
+        background: rgba(59, 130, 246, 0.09);
+      }
+      .combined-dropzone.has-file {
+        border-color: #10b981;
+        background: rgba(16, 185, 129, 0.05);
+      }
+      .combined-dropzone input {
+        display: none;
+      }
+      /* ── Divider ── */
+      .or-divider {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin: 20px 0 16px;
+        color: #4b5563;
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+      .or-divider::before, .or-divider::after {
+        content: '';
+        flex: 1;
+        height: 1px;
+        background: rgba(255,255,255,0.08);
+      }
+      /* ── Legacy four-file grid ── */
       .file-grid {
         display: grid;
         grid-template-columns: 1fr 1fr;
-        gap: 16px;
+        gap: 12px;
         margin-bottom: 24px;
       }
       .file-dropzone {
-        border: 2px dashed rgba(255, 255, 255, 0.15);
+        border: 2px dashed rgba(255, 255, 255, 0.1);
         border-radius: 8px;
-        padding: 16px;
+        padding: 12px;
         text-align: center;
         cursor: pointer;
         background: rgba(255, 255, 255, 0.02);
@@ -72,11 +145,11 @@ export class ImportPanel {
         display: flex;
         flex-direction: column;
         align-items: center;
-        gap: 8px;
+        gap: 6px;
       }
       .file-dropzone:hover {
-        border-color: #3b82f6;
-        background: rgba(59, 130, 246, 0.05);
+        border-color: #6366f1;
+        background: rgba(99, 102, 241, 0.05);
       }
       .file-dropzone.has-file {
         border-color: #10b981;
@@ -289,12 +362,22 @@ export class ImportPanel {
         </div>
         <div class="import-subtitle">Upload CSV files to preview and validate geological traces.</div>
         
+        <div class="combined-dropzone-wrap">
+          <div class="combined-label-row">
+            <span class="combined-badge">Recommended</span>
+            <span class="combined-label-text">Combined Master CSV</span>
+          </div>
+          ${this.renderCombinedDropzone()}
+          <div class="combined-hint">One file for all hole types (DD / RC / TR / CH / FC) across all zones</div>
+        </div>
+
+        <div class="or-divider">or use four separate files</div>
+
         <div class="file-grid">
           ${this.renderDropzone('collar_file', 'Collar CSV')}
           ${this.renderDropzone('survey_file', 'Survey CSV')}
           ${this.renderDropzone('assay_file', 'Assay CSV')}
           ${this.renderDropzone('lithology_file', 'Lithology CSV')}
-          ${this.renderDropzone('combined_file', 'Combined CSV')}
         </div>
 
         <button id="upload-btn" class="btn-primary" ${this.hasFiles() ? '' : 'disabled'}>
@@ -310,15 +393,32 @@ export class ImportPanel {
     this.bindEvents();
   }
 
+  renderCombinedDropzone() {
+    const file = this.selectedFiles['combined_file'];
+    const hasFile = !!file;
+    return `
+      <div id="zone-combined_file" class="combined-dropzone ${hasFile ? 'has-file' : ''}" data-key="combined_file">
+        <input type="file" id="input-combined_file" accept=".csv">
+        <svg style="width:36px;height:36px;color:${hasFile ? '#10b981' : '#3b82f6'}" viewBox="0 0 24 24">
+          <path fill="currentColor" d="M9,16V10H5L12,3L19,10H15V16H9M5,20V18H19V20H5Z"/>
+        </svg>
+        <span style="font-size:0.9375rem;font-weight:700;color:${hasFile ? '#34d399' : '#f3f4f6'}">
+          ${hasFile ? file.name : 'Drop Combined CSV here or click to browse'}
+        </span>
+        ${hasFile ? '' : '<span style="font-size:0.75rem;color:#6b7280">Accepts files exported from Excel (BOM encoding supported)</span>'}
+      </div>
+    `;
+  }
+
   renderDropzone(key, label) {
     const file = this.selectedFiles[key];
     const isHasFile = !!file;
     return `
       <div id="zone-${key}" class="file-dropzone ${isHasFile ? 'has-file' : ''}" data-key="${key}">
         <input type="file" id="input-${key}" accept=".csv">
-        <svg style="width:28px;height:28px;color:${isHasFile ? '#10b981' : '#9ca3af'}" viewBox="0 0 24 24"><path fill="currentColor" d="M9,16V10H5L12,3L19,10H15V16H9M5,20V18H19V20H5Z"/></svg>
+        <svg style="width:22px;height:22px;color:${isHasFile ? '#10b981' : '#6b7280'}" viewBox="0 0 24 24"><path fill="currentColor" d="M9,16V10H5L12,3L19,10H15V16H9M5,20V18H19V20H5Z"/></svg>
         <span class="file-label">${label}</span>
-        <span class="file-status">${file ? file.name : 'Drag & drop or click'}</span>
+        <span class="file-status">${file ? file.name : 'Click to select'}</span>
       </div>
     `;
   }
@@ -328,7 +428,7 @@ export class ImportPanel {
   }
 
   bindEvents() {
-    const zones = this.container.querySelectorAll('.file-dropzone');
+    const zones = this.container.querySelectorAll('.file-dropzone, .combined-dropzone');
     zones.forEach(zone => {
       const key = zone.getAttribute('data-key');
       const input = zone.querySelector('input');
