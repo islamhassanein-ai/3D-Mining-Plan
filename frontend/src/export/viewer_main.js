@@ -332,8 +332,10 @@ async function initStaticViewer() {
 
     // 26. Draggable modal support
     function makeDraggable(card) {
+      if (card.dataset.draggable) return;
       const header = card.querySelector('.modal-header');
       if (!header) return;
+      card.dataset.draggable = '1';
       let dragging = false, ox = 0, oy = 0;
       header.addEventListener('mousedown', (e) => {
         if (e.target.closest('.modal-close')) return;
@@ -354,14 +356,13 @@ async function initStaticViewer() {
       });
       window.addEventListener('mouseup', () => { dragging = false; });
     }
+    // Wire up cards already in DOM (e.g. shortcut help overlay)
+    document.querySelectorAll('.modal-card').forEach(makeDraggable);
+    // Wire up cards injected dynamically into #modal-container
     const modalContainer = document.getElementById('modal-container');
     if (modalContainer) {
       new MutationObserver(() => {
-        const card = modalContainer.querySelector('.modal-card');
-        if (card && !card.dataset.draggable) {
-          card.dataset.draggable = '1';
-          makeDraggable(card);
-        }
+        modalContainer.querySelectorAll('.modal-card').forEach(makeDraggable);
       }).observe(modalContainer, { childList: true, subtree: true });
     }
 

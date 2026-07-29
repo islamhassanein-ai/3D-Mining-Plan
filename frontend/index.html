@@ -682,7 +682,7 @@
       if (projectId) {
         const select = document.getElementById('project-select');
         const opt = select && select.querySelector(`option[value="${projectId}"]`);
-        document.getElementById('header-project-name').textContent = opt ? `â€” ${opt.textContent}` : 'â€” Grade Control';
+        document.getElementById('header-project-name').textContent = opt ? `– ${opt.textContent}` : '– Grade Control';
       }
 
       document.getElementById('header-stats').style.display = 'flex';
@@ -709,7 +709,7 @@
       document.getElementById('visualizer-controls').style.display = 'none';
       document.getElementById('delete-project-btn').style.display = 'none';
       document.getElementById('header-stats').style.display = 'none';
-      document.getElementById('header-project-name').textContent = 'â€” Grade Control';
+      document.getElementById('header-project-name').textContent = '– Grade Control';
       if (viewport3D) {
         viewport3D.destroy();
         viewport3D = null;
@@ -805,7 +805,7 @@
       // Update header title to show Shared/Read-Only Mode
       const subEl = document.querySelector('#app-header .sub');
       if (subEl) subEl.textContent = 'Read-Only Shared Viewer';
-      document.getElementById('header-project-name').textContent = 'â€” Shared Prospect';
+      document.getElementById('header-project-name').textContent = '– Shared Prospect';
       
       // Update session status footer
       const authDiv = document.getElementById('auth-status-div');

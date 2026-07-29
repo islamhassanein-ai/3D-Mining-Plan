@@ -50,6 +50,9 @@ export class CutoffSlider {
         align-items: center;
         gap: 8px;
         flex-wrap: nowrap;
+        width: 100%;
+        box-sizing: border-box;
+        overflow: hidden;
       }
       .cutoff-input-row input[type="range"] {
         flex: 1;
@@ -75,7 +78,9 @@ export class CutoffSlider {
       }
       .cutoff-number-input {
         width: 60px;
+        min-width: 0;
         flex-shrink: 0;
+        box-sizing: border-box;
         padding: 2px 6px;
         text-align: center;
         font-size: 12px;
