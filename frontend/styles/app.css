@@ -605,3 +605,80 @@
       border-radius: 6px 0 0 6px;
     }
     .app-body.hide-right #right-edge-tab { right: 8px; }
+
+    /* --- Export viewer additions (T013) --- */
+
+    /* Three-row grid when the export footer is present; no visual change
+       in the live app since the implicit third row collapses to 0. */
+    .app-layout:has(#export-footer) {
+      grid-template-rows: auto 1fr auto;
+    }
+
+    /* "STATIC EXPORT" badge that appears next to the brand in the header */
+    .export-chip {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 9px;
+      background: rgba(212, 175, 55, 0.12);
+      border: 1px solid var(--gold);
+      color: var(--gold);
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-left: 12px;
+      flex-shrink: 0;
+    }
+
+    /* Provenance footer bar at the bottom of the export viewer */
+    #export-footer {
+      background: var(--bg-panel2);
+      border-top: 1px solid var(--border-light);
+      padding: 5px 16px;
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 6px 16px;
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+
+    .export-footer-meta,
+    .export-footer-provenance,
+    .export-footer-counts {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .export-footer-sep {
+      color: var(--border-light);
+      margin: 0 2px;
+    }
+
+    #export-notices {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      width: 100%;
+    }
+
+    .export-notice {
+      font-size: 0.7rem;
+      padding: 1px 8px;
+      border-radius: 4px;
+    }
+
+    .export-notice-warning {
+      background: rgba(234, 179, 8, 0.1);
+      border: 1px solid rgba(234, 179, 8, 0.3);
+      color: #fbbf24;
+    }
+
+    .export-notice-info {
+      background: rgba(59, 130, 246, 0.1);
+      border: 1px solid rgba(59, 130, 246, 0.3);
+      color: #93c5fd;
+    }
