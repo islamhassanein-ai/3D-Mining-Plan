@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
+from datetime import datetime
 import io
 import json
 import os
@@ -27,6 +28,18 @@ from backend.src.services.csv_service import (
     export_assays_csv,
     export_lithologies_csv
 )
+from backend.src.services.html_export import (
+    build_standalone_html,
+    ExportTooLargeError,
+    parse_topography_csv,
+    decimate_topography,
+)
+from backend.src.services.grade_coloring import get_grade_color
+
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
+    os.path.abspath(__file__)
+))))
+_FRONTEND_DIR = os.path.join(_REPO_ROOT, "frontend")
 
 router = APIRouter(prefix="/projects/{project_id}/export", tags=["export"])
 
@@ -264,4 +277,205 @@ def export_pdf(
             "Content-Disposition": f"attachment; filename={project.name.replace(' ', '_')}_section.pdf",
             "Cache-Control": "no-store"
         }
+    )
+
+
+@router.get("/standalone.html")
+def export_standalone_html(
+    project_id: str,
+    include_topography: bool = Query(default=True),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    from backend.src.api.scene import get_project_scene
+
+    project = get_owned_project_or_404(project_id, db, current_user)
+    storage = LocalFilesystemStorage()
+
+    # 1. Scene (full rendering data — same shape as the live /scene endpoint)
+    scene = get_project_scene(project_id, db, current_user)
+
+    # 2. Collar details keyed by hole_id (full inspector payload for every collar)
+    collars = db.query(Collar).filter(
+        Collar.project_id == project.id,
+        Collar.superseded_by.is_(None)
+    ).all()
+
+    collar_details: dict = {}
+    for c in collars:
+        surveys = db.query(Survey).filter(
+            Survey.collar_id == c.id
+        ).order_by(Survey.depth).all()
+        assays = db.query(AssayInterval).filter(
+            AssayInterval.collar_id == c.id,
+            AssayInterval.superseded_by.is_(None)
+        ).order_by(AssayInterval.from_depth).all()
+        lithologies = db.query(LithologyInterval).filter(
+            LithologyInterval.collar_id == c.id,
+            LithologyInterval.superseded_by.is_(None)
+        ).order_by(LithologyInterval.from_depth).all()
+
+        merged: list = []
+        for a in assays:
+            merged.append({
+                "type": "assay",
+                "from_depth": float(a.from_depth),
+                "to_depth": float(a.to_depth),
+                "value": float(a.grade_value),
+                "unit": a.grade_unit,
+                "below_dl": a.below_detection_limit,
+                "qaqc_flag": a.qaqc_flag,
+                "color": get_grade_color(a.grade_value, a.grade_unit),
+            })
+        for l in lithologies:
+            merged.append({
+                "type": "lithology",
+                "from_depth": float(l.from_depth),
+                "to_depth": float(l.to_depth),
+                "lith_code": l.lith_code,
+                "rqd_percent": l.rqd_percent,
+                "core_recovery_percent": l.core_recovery_percent,
+            })
+        merged.sort(key=lambda x: (x["from_depth"], x["to_depth"]))
+
+        collar_details[c.hole_id] = {
+            "id": str(c.id),
+            "hole_id": c.hole_id,
+            "easting": float(c.easting),
+            "northing": float(c.northing),
+            "elevation": float(c.elevation),
+            "utm_zone": c.utm_zone,
+            "surveys": [
+                {"id": str(s.id), "depth": float(s.depth),
+                 "dip": float(s.dip), "azimuth": float(s.azimuth)}
+                for s in surveys
+            ],
+            "assays": [
+                {
+                    "id": str(a.id),
+                    "from_depth": float(a.from_depth),
+                    "to_depth": float(a.to_depth),
+                    "grade_value": float(a.grade_value),
+                    "grade_unit": a.grade_unit,
+                    "below_detection_limit": a.below_detection_limit,
+                    "qaqc_flag": a.qaqc_flag,
+                    "color": get_grade_color(a.grade_value, a.grade_unit),
+                }
+                for a in assays
+            ],
+            "lithologies": [
+                {
+                    "id": str(l.id),
+                    "from_depth": float(l.from_depth),
+                    "to_depth": float(l.to_depth),
+                    "lith_code": l.lith_code,
+                    "rqd_percent": l.rqd_percent,
+                    "core_recovery_percent": l.core_recovery_percent,
+                }
+                for l in lithologies
+            ],
+            "merged_intervals": merged,
+        }
+
+    # 3. Topography (decimated CSV → [[e, n, el], …])
+    topo: dict = {"included": False, "point_count": 0, "points": []}
+    topo_raw_count = 0
+    notices: list = []
+    if include_topography:
+        topo_wf = db.query(Wireframe).filter(
+            Wireframe.project_id == project.id,
+            Wireframe.solid_type == "topography"
+        ).first()
+        if topo_wf:
+            try:
+                csv_bytes = storage.load(topo_wf.file_ref)
+                raw_points = parse_topography_csv(
+                    csv_bytes.decode("utf-8", errors="replace")
+                )
+                topo_raw_count = len(raw_points)
+                decimated = decimate_topography(raw_points)
+                topo = {
+                    "included": True,
+                    "point_count": len(decimated),
+                    "points": decimated,
+                }
+                if topo_raw_count > len(decimated):
+                    notices.append(
+                        f"Topography decimated from {topo_raw_count:,} "
+                        f"to {len(decimated):,} points for export."
+                    )
+            except Exception:
+                notices.append("Topography could not be included (file read error).")
+
+    # 4. Wireframes (geometry pre-baked; topography excluded)
+    wireframes_list: list = []
+    for w in db.query(Wireframe).filter(
+        Wireframe.project_id == project.id,
+        Wireframe.solid_type != "topography"
+    ).all():
+        geom_path = os.path.join(storage.base_dir, f"{w.file_ref}_geom.json")
+        if not os.path.exists(geom_path):
+            continue
+        try:
+            with open(geom_path, "r", encoding="utf-8") as fh:
+                geom = json.load(fh)
+            wireframes_list.append({
+                "id": str(w.id),
+                "name": w.name,
+                "solid_type": w.solid_type,
+                "vertices": geom.get("vertices", []),
+                "faces": geom.get("faces", []),
+            })
+        except Exception:
+            pass
+
+    # 5. Static viewer assets (must be built before calling this endpoint)
+    try:
+        with open(os.path.join(_FRONTEND_DIR, "dist", "export_viewer.js"),
+                  "r", encoding="utf-8") as fh:
+            bundle_js = fh.read()
+        with open(os.path.join(_FRONTEND_DIR, "styles", "app.css"),
+                  "r", encoding="utf-8") as fh:
+            css_text = fh.read()
+        with open(os.path.join(_FRONTEND_DIR, "src", "export", "shell.html"),
+                  "r", encoding="utf-8") as fh:
+            shell_html = fh.read()
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Viewer bundle not built: {exc.filename}. "
+                   "Run 'npm run build:export' in the frontend directory."
+        )
+
+    # 6. Assemble payload
+    payload = {
+        "format_version": 1,
+        "project": {"name": project.name, "utm_zone": project.utm_zone or ""},
+        "scene": scene,
+        "collar_details": collar_details,
+        "topography": topo,
+        "wireframes": wireframes_list,
+        "export_meta": {
+            "exported_at": datetime.utcnow().isoformat() + "Z",
+            "exported_by": current_user.email,
+            "notices": notices,
+        },
+    }
+
+    # 7. Build HTML document
+    try:
+        html_bytes = build_standalone_html(payload, shell_html, css_text, bundle_js)
+    except ExportTooLargeError as exc:
+        raise HTTPException(status_code=413, detail=str(exc))
+
+    safe_name = project.name.replace(" ", "_")
+    return Response(
+        content=html_bytes,
+        media_type="text/html",
+        headers={
+            "Content-Disposition": (
+                f'attachment; filename="{safe_name} - 3D Standalone.html"'
+            ),
+            "Cache-Control": "no-store",
+        },
     )

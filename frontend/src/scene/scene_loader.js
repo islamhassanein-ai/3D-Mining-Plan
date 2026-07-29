@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import { ApiDataSource, ShareTokenDataSource } from '../services/data_source.js';
 
 export class SceneLoader {
   constructor(scene, controls, tracesRenderer, assaysRenderer, lithologiesRenderer, topographyRenderer, trenchesRenderer, wireframesRenderer, structuralRenderer, lodManager, boreholeLabelsRenderer, trenchLabelsRenderer) {
@@ -49,14 +48,6 @@ export class SceneLoader {
       console.error('Failed to load scene:', err);
       throw err;
     }
-  }
-
-  async loadProject(projectId) {
-    return this.load(new ApiDataSource(projectId));
-  }
-
-  async loadSharedProject(token) {
-    return this.load(new ShareTokenDataSource(token));
   }
 
   async renderScene(data) {

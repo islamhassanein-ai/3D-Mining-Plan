@@ -5,10 +5,12 @@ export class ExportPanel {
     this.sectionPanelRef = sectionPanelRef;
     this.statusMessage = '';
     this.statusType = ''; // 'info', 'success', 'error'
+    this.includeTopo = true;
     this.loading = {
       csv: false,
       pdf: false,
-      dxf: false
+      dxf: false,
+      html: false,
     };
 
     this.init();
@@ -93,6 +95,24 @@ export class ExportPanel {
       .icon-dxf {
         background: rgba(59, 130, 246, 0.15);
         color: #3b82f6;
+      }
+      .icon-html {
+        background: rgba(245, 158, 11, 0.15);
+        color: #f59e0b;
+      }
+      .export-topo-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-top: 8px;
+        font-size: 0.75rem;
+        color: #94a3b8;
+        cursor: pointer;
+        user-select: none;
+      }
+      .export-topo-row input[type=checkbox] {
+        cursor: pointer;
+        accent-color: #f59e0b;
       }
       .export-details {
         flex: 1;
@@ -216,8 +236,11 @@ export class ExportPanel {
         });
         query = `?${params.toString()}`;
       }
+      if (format === 'html') {
+        query = `?include_topography=${this.includeTopo ? 'true' : 'false'}`;
+      }
 
-      const routePaths = { csv: 'data.csv', pdf: 'section.pdf', dxf: 'wireframes.dxf' };
+      const routePaths = { csv: 'data.csv', pdf: 'section.pdf', dxf: 'wireframes.dxf', html: 'standalone.html' };
       const res = await fetch(`${apiBase}/projects/${this.projectId}/export/${routePaths[format]}${query}`, {
         headers,
         cache: 'no-store'
@@ -233,11 +256,20 @@ export class ExportPanel {
       const a = document.createElement('a');
       a.href = url;
 
+      // Honour the server's Content-Disposition filename when present
+      const cd = res.headers.get('Content-Disposition') || '';
+      const cdMatch = cd.match(/filename="?([^";]+)"?/i);
       const csvEntity = query.includes('entity=') ? query.split('entity=')[1] : null;
-      let filename = `project_${this.projectId}_export.${format}`;
-      if (format === 'csv') filename = csvEntity ? `project_${this.projectId}_${csvEntity}.csv` : `project_${this.projectId}_drillholes.zip`;
-      else if (format === 'pdf') filename = `project_${this.projectId}_section.pdf`;
-      else if (format === 'dxf') filename = `project_${this.projectId}_wireframes.dxf`;
+      const dateStr = new Date().toISOString().slice(0, 10);
+      let filename = cdMatch
+        ? cdMatch[1].trim()
+        : `project_${this.projectId}_export.${format}`;
+      if (!cdMatch) {
+        if (format === 'csv')  filename = csvEntity ? `project_${this.projectId}_${csvEntity}.csv` : `project_${this.projectId}_drillholes.zip`;
+        else if (format === 'pdf')  filename = `project_${this.projectId}_section.pdf`;
+        else if (format === 'dxf')  filename = `project_${this.projectId}_wireframes.dxf`;
+        else if (format === 'html') filename = `project_${this.projectId}_3D_Viewer_${dateStr}.html`;
+      }
 
       a.download = filename;
       document.body.appendChild(a);
@@ -329,6 +361,27 @@ export class ExportPanel {
               ${this.loading.dxf ? '<span class="spinner-small"></span> Exporting...' : 'Download DXF'}
             </button>
           </div>
+
+          <!-- Interactive 3D Viewer (HTML) -->
+          <div class="export-option-row">
+            <div class="export-icon-container icon-html">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="16 18 22 12 16 6"></polyline>
+                <polyline points="8 6 2 12 8 18"></polyline>
+              </svg>
+            </div>
+            <div class="export-details">
+              <div class="export-title">Interactive 3D Viewer (HTML)</div>
+              <div class="export-desc">A single self-contained file that opens in any browser — no login or internet required. Contains the full project as of this export date.</div>
+              <label class="export-topo-row">
+                <input type="checkbox" id="export-html-topo" ${this.includeTopo ? 'checked' : ''}>
+                Include topography surface
+              </label>
+            </div>
+            <button class="btn-export-download" id="export-html-download" ${this.loading.html ? 'disabled' : ''}>
+              ${this.loading.html ? '<span class="spinner-small"></span> Building...' : 'Download HTML'}
+            </button>
+          </div>
         </div>
 
         <!-- Status banner -->
@@ -355,6 +408,16 @@ export class ExportPanel {
     const dxfBtn = this.container.querySelector('#export-dxf-download');
     if (dxfBtn) {
       dxfBtn.onclick = () => this.handleDownload('dxf');
+    }
+
+    const htmlBtn = this.container.querySelector('#export-html-download');
+    if (htmlBtn) {
+      htmlBtn.onclick = () => this.handleDownload('html');
+    }
+
+    const topoCheck = this.container.querySelector('#export-html-topo');
+    if (topoCheck) {
+      topoCheck.onchange = (e) => { this.includeTopo = e.target.checked; };
     }
   }
 }

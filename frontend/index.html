@@ -463,7 +463,7 @@
         const toolbar = new window.SceneToolbar(toolbarContainer, viewport3D);
         
         // Load data via SceneLoader
-        const data = await viewport3D.sceneLoader.loadProject(projectId);
+        const data = await viewport3D.sceneLoader.load(new window.ApiDataSource(projectId));
 
         // Wire Camera Preset buttons + Reset
         document.querySelectorAll('.vbtn[data-preset]').forEach(btn => {
@@ -798,7 +798,7 @@
         const toolbar = new window.SceneToolbar(toolbarContainer, viewport3D);
         
         // Load data via shared SceneLoader method
-        const data = await viewport3D.sceneLoader.loadSharedProject(token);
+        const data = await viewport3D.sceneLoader.load(new window.ShareTokenDataSource(token));
 
         // Wire Camera Preset buttons + Reset
         document.querySelectorAll('.vbtn[data-preset]').forEach(btn => {
