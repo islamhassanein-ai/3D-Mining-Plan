@@ -330,6 +330,17 @@ async function initStaticViewer() {
       }
     }
 
+    // 25b. Panel collapse tabs
+    const appBody = document.getElementById('app-body');
+    const leftTab  = document.getElementById('left-edge-tab');
+    const rightTab = document.getElementById('right-edge-tab');
+    if (leftTab && appBody) {
+      leftTab.onclick = () => appBody.classList.toggle('hide-left');
+    }
+    if (rightTab && appBody) {
+      rightTab.onclick = () => appBody.classList.toggle('hide-right');
+    }
+
     // 26. Draggable modal support
     function makeDraggable(card) {
       if (card.dataset.draggable) return;
