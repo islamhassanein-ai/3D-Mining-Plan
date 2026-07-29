@@ -9,7 +9,8 @@ export class ImportPanel {
       collar_file: null,
       survey_file: null,
       assay_file: null,
-      lithology_file: null
+      lithology_file: null,
+      combined_file: null
     };
     this.batchId = null;
     this.validationData = null;
@@ -54,16 +55,89 @@ export class ImportPanel {
         color: #9ca3af;
         margin-bottom: 24px;
       }
+      /* ── Combined (primary) dropzone ── */
+      .combined-dropzone-wrap {
+        margin-bottom: 20px;
+      }
+      .combined-label-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 8px;
+      }
+      .combined-badge {
+        background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+        color: white;
+        font-size: 0.65rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        padding: 2px 8px;
+        border-radius: 9999px;
+      }
+      .combined-label-text {
+        font-size: 0.875rem;
+        font-weight: 700;
+        color: #f3f4f6;
+      }
+      .combined-hint {
+        font-size: 0.75rem;
+        color: #6b7280;
+        margin-top: 4px;
+      }
+      .combined-dropzone {
+        border: 2px dashed rgba(59, 130, 246, 0.4);
+        border-radius: 10px;
+        padding: 28px 20px;
+        text-align: center;
+        cursor: pointer;
+        background: rgba(59, 130, 246, 0.04);
+        transition: all 0.2s ease;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 10px;
+      }
+      .combined-dropzone:hover {
+        border-color: #3b82f6;
+        background: rgba(59, 130, 246, 0.09);
+      }
+      .combined-dropzone.has-file {
+        border-color: #10b981;
+        background: rgba(16, 185, 129, 0.05);
+      }
+      .combined-dropzone input {
+        display: none;
+      }
+      /* ── Divider ── */
+      .or-divider {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin: 20px 0 16px;
+        color: #4b5563;
+        font-size: 0.75rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+      .or-divider::before, .or-divider::after {
+        content: '';
+        flex: 1;
+        height: 1px;
+        background: rgba(255,255,255,0.08);
+      }
+      /* ── Legacy four-file grid ── */
       .file-grid {
         display: grid;
         grid-template-columns: 1fr 1fr;
-        gap: 16px;
+        gap: 12px;
         margin-bottom: 24px;
       }
       .file-dropzone {
-        border: 2px dashed rgba(255, 255, 255, 0.15);
+        border: 2px dashed rgba(255, 255, 255, 0.1);
         border-radius: 8px;
-        padding: 16px;
+        padding: 12px;
         text-align: center;
         cursor: pointer;
         background: rgba(255, 255, 255, 0.02);
@@ -71,11 +145,11 @@ export class ImportPanel {
         display: flex;
         flex-direction: column;
         align-items: center;
-        gap: 8px;
+        gap: 6px;
       }
       .file-dropzone:hover {
-        border-color: #3b82f6;
-        background: rgba(59, 130, 246, 0.05);
+        border-color: #6366f1;
+        background: rgba(99, 102, 241, 0.05);
       }
       .file-dropzone.has-file {
         border-color: #10b981;
@@ -171,7 +245,7 @@ export class ImportPanel {
       }
       .stats-summary {
         display: grid;
-        grid-template-columns: repeat(4, 1fr);
+        grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
         gap: 12px;
         margin-bottom: 20px;
       }
@@ -288,6 +362,17 @@ export class ImportPanel {
         </div>
         <div class="import-subtitle">Upload CSV files to preview and validate geological traces.</div>
         
+        <div class="combined-dropzone-wrap">
+          <div class="combined-label-row">
+            <span class="combined-badge">Recommended</span>
+            <span class="combined-label-text">Combined Master CSV</span>
+          </div>
+          ${this.renderCombinedDropzone()}
+          <div class="combined-hint">One file for all hole types (DD / RC / TR / CH / FC) across all zones</div>
+        </div>
+
+        <div class="or-divider">or use four separate files</div>
+
         <div class="file-grid">
           ${this.renderDropzone('collar_file', 'Collar CSV')}
           ${this.renderDropzone('survey_file', 'Survey CSV')}
@@ -299,7 +384,7 @@ export class ImportPanel {
           ${this.loading ? '<div class="loading-spinner"></div> Processing...' : 'Validate Upload'}
         </button>
 
-        ${this.error ? `<div style="color:#ef4444;margin-top:16px;font-size:0.875rem;">${this.error}</div>` : ''}
+        ${this.error ? `<div style="color:#ef4444;margin-top:16px;font-size:0.875rem;">${this._esc(this.error)}</div>` : ''}
 
         <div id="validation-view" class="validation-section" style="display: none;"></div>
       </div>
@@ -308,17 +393,45 @@ export class ImportPanel {
     this.bindEvents();
   }
 
+  renderCombinedDropzone() {
+    const file = this.selectedFiles['combined_file'];
+    const hasFile = !!file;
+    return `
+      <div id="zone-combined_file" class="combined-dropzone ${hasFile ? 'has-file' : ''}" data-key="combined_file">
+        <input type="file" id="input-combined_file" accept=".csv">
+        <svg style="width:36px;height:36px;color:${hasFile ? '#10b981' : '#3b82f6'}" viewBox="0 0 24 24">
+          <path fill="currentColor" d="M9,16V10H5L12,3L19,10H15V16H9M5,20V18H19V20H5Z"/>
+        </svg>
+        <span style="font-size:0.9375rem;font-weight:700;color:${hasFile ? '#34d399' : '#f3f4f6'}">
+          ${hasFile ? file.name : 'Drop Combined CSV here or click to browse'}
+        </span>
+        ${hasFile ? '' : '<span style="font-size:0.75rem;color:#6b7280">Accepts files exported from Excel (BOM encoding supported)</span>'}
+      </div>
+    `;
+  }
+
   renderDropzone(key, label) {
     const file = this.selectedFiles[key];
     const isHasFile = !!file;
     return `
       <div id="zone-${key}" class="file-dropzone ${isHasFile ? 'has-file' : ''}" data-key="${key}">
         <input type="file" id="input-${key}" accept=".csv">
-        <svg style="width:28px;height:28px;color:${isHasFile ? '#10b981' : '#9ca3af'}" viewBox="0 0 24 24"><path fill="currentColor" d="M9,16V10H5L12,3L19,10H15V16H9M5,20V18H19V20H5Z"/></svg>
+        <svg style="width:22px;height:22px;color:${isHasFile ? '#10b981' : '#6b7280'}" viewBox="0 0 24 24"><path fill="currentColor" d="M9,16V10H5L12,3L19,10H15V16H9M5,20V18H19V20H5Z"/></svg>
         <span class="file-label">${label}</span>
-        <span class="file-status">${file ? file.name : 'Drag & drop or click'}</span>
+        <span class="file-status">${file ? file.name : 'Click to select'}</span>
       </div>
     `;
+  }
+
+  _enforceMutualExclusion(changedKey) {
+    if (changedKey === 'combined_file') {
+      this.selectedFiles.collar_file = null;
+      this.selectedFiles.survey_file = null;
+      this.selectedFiles.assay_file = null;
+      this.selectedFiles.lithology_file = null;
+    } else {
+      this.selectedFiles.combined_file = null;
+    }
   }
 
   hasFiles() {
@@ -326,7 +439,7 @@ export class ImportPanel {
   }
 
   bindEvents() {
-    const zones = this.container.querySelectorAll('.file-dropzone');
+    const zones = this.container.querySelectorAll('.file-dropzone, .combined-dropzone');
     zones.forEach(zone => {
       const key = zone.getAttribute('data-key');
       const input = zone.querySelector('input');
@@ -347,6 +460,7 @@ export class ImportPanel {
         zone.style.borderColor = '';
         if (e.dataTransfer.files.length > 0) {
           this.selectedFiles[key] = e.dataTransfer.files[0];
+          this._enforceMutualExclusion(key);
           this.render();
         }
       });
@@ -354,6 +468,7 @@ export class ImportPanel {
       input.addEventListener('change', () => {
         if (input.files.length > 0) {
           this.selectedFiles[key] = input.files[0];
+          this._enforceMutualExclusion(key);
           this.render();
         }
       });
@@ -417,7 +532,14 @@ export class ImportPanel {
           <div class="stat-val">${stats.lithology_count}</div>
           <div class="stat-lbl">Lithology</div>
         </div>
+        ${stats.trench_count !== undefined ? `
+        <div class="stat-card">
+          <div class="stat-val">${stats.trench_count}</div>
+          <div class="stat-lbl">Trench pts</div>
+        </div>` : ''}
       </div>
+
+      ${v.zones && v.zones.length > 0 ? this.renderZonesBreakdown(v.zones) : ''}
 
       ${v.issues.length > 0 ? `
         <div style="font-size:0.875rem;font-weight:600;margin-bottom:8px;color:#f3f4f6;">Geological Audit Log:</div>
@@ -436,7 +558,7 @@ export class ImportPanel {
 
       <div class="utm-confirm-box">
         <label for="utm-zone-confirm">Confirm Projection UTM Zone:</label>
-        <input type="text" id="utm-zone-confirm" value="${v.detected_utm_zone || '36N'}">
+        <input type="text" id="utm-zone-confirm" value="${v.detected_utm_zone || '37N'}">
       </div>
 
       ${hasWarnings ? `
@@ -460,7 +582,7 @@ export class ImportPanel {
   async handleCommit() {
     const utmZone = this.container.querySelector('#utm-zone-confirm').value.trim();
     if (!utmZone) {
-      alert('Please enter a valid UTM zone to commit (e.g., 36N).');
+      alert('Please enter a valid UTM zone to commit (e.g., 37N).');
       return;
     }
 
@@ -476,10 +598,19 @@ export class ImportPanel {
     this.render();
 
     try {
-      await ApiClient.commitImport(this.projectId, this.batchId, utmZone, acknowledgeWarnings);
+      const commitResult = await ApiClient.commitImport(this.projectId, this.batchId, utmZone, acknowledgeWarnings);
+      // Multi-project combined imports produce a `batches` summary. A single
+      // four-file import still returns one batch row (the URL project). Show
+      // the result so creating four new projects is not an invisible side
+      // effect of clicking Commit, then reload the scene for the current
+      // project (the others are linked from the summary).
+      this._renderCommitResult(commitResult);
       this.validationData = null;
       this.batchId = null;
-      this.selectedFiles = { collar_file: null, survey_file: null, assay_file: null, lithology_file: null };
+      this.selectedFiles = {
+        collar_file: null, survey_file: null, assay_file: null,
+        lithology_file: null, combined_file: null
+      };
       this.loading = false;
       this.render();
       if (this.onCommit) this.onCommit();
@@ -488,6 +619,80 @@ export class ImportPanel {
       this.render();
       alert(`Commit failed: ${err.message}`);
     }
+  }
+
+  renderZonesBreakdown(zones) {
+    // Preview of which projects will be created vs appended BEFORE commit, so
+    // the user can reject rather than blindly create four new projects.
+    const rows = zones.map(z => {
+      const label = z.zone === null || z.zone === undefined
+        ? '<em>(no zone — current project)</em>'
+        : this._esc(z.zone || '');
+      const actionPill = z.action === 'created'
+        ? '<span style="color:#fbbf24">will CREATE</span>'
+        : '<span style="color:#34d399">APPEND</span>';
+      const types = Object.entries(z.hole_type_breakdown || {})
+        .map(([t, n]) => `${this._esc(t)}:${n}`).join(', ');
+      const pid = z.project_id ? `<code>${z.project_id.slice(0,8)}…</code>` : '<em>new</em>';
+      return `<tr>
+        <td>${label}</td>
+        <td>${actionPill}</td>
+        <td>${pid}</td>
+        <td>${z.collar_count}</td>
+        <td>${z.trench_count}</td>
+        <td>${types}</td>
+      </tr>`;
+    }).join('');
+    const styles = `
+      .zones-table{width:100%;border-collapse:collapse;font-size:0.78rem;margin-bottom:16px}
+      .zones-table th,.zones-table td{padding:5px 8px;border-bottom:1px solid rgba(255,255,255,0.08);text-align:left}
+      .zones-table th{color:#9ca3af;font-weight:600;text-transform:uppercase;font-size:0.62rem}
+      .zones-title{font-size:0.875rem;font-weight:600;margin:8px 0;color:#f3f4f6}
+    `;
+    if (!document.getElementById('import-zones-styles')) {
+      const s = document.createElement('style'); s.id = 'import-zones-styles'; s.textContent = styles; document.head.appendChild(s);
+    }
+    return `
+      <div class="zones-title">Zone routing preview (projects ${this._hasCreation(zones) ? 'to CREATE &amp; APPEND' : 'to APPEND'})</div>
+      <table class="zones-table">
+        <thead><tr><th>Zone</th><th>Action</th><th>Project</th><th>Collars</th><th>Trench pts</th><th>Types</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    `;
+  }
+
+  _hasCreation(zones) { return zones.some(z => z.action === 'created'); }
+
+  _esc(s) {
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  _renderCommitResult(commitResult) {
+    // Surface the per-project batches after commit so a multi-project import
+    // is not invisible (handleCommit previously only reloaded the current
+    // project's scene). Logged to console and shown as a dismissible toast;
+    // each created/appended project is listed with its id for navigation.
+    try {
+      const batches = (commitResult && commitResult.batches) || [];
+      if (batches.length) {
+        const created = batches.filter(b => b.action === 'created');
+        const appended = batches.filter(b => b.action === 'appended');
+        console.log('Import committed · created', created.length, 'appended', appended.length, batches);
+        const lines = batches.map(b =>
+          `${b.action === 'created' ? 'Created' : 'Appended'} project "${b.project_name}" (${b.collar_count} collars, ${b.trench_count} trench pts) id=${b.project_id}`
+        ).join('\n');
+        this._toast(`Import committed (${created.length} created, ${appended.length} appended):\n${lines}`);
+      }
+    } catch (e) { /* non-fatal UI */ }
+  }
+
+  _toast(message) {
+    const t = document.createElement('div');
+    t.className = 'import-commit-toast';
+    t.style.cssText = 'position:fixed;right:16px;bottom:16px;max-width:420px;white-space:pre-line;background:rgba(17,24,39,0.97);border:1px solid rgba(16,185,129,0.4);color:#e2e8f0;padding:12px 14px;border-radius:8px;font-size:0.8rem;z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,0.4)';
+    t.textContent = message;
+    document.body.appendChild(t);
+    setTimeout(() => { t.style.transition='opacity 0.4s'; t.style.opacity='0'; setTimeout(()=>t.remove(), 400); }, 7000);
   }
 
   async handleReject() {

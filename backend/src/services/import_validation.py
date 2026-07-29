@@ -6,17 +6,28 @@ def validate_import_batch(
     assays: List[Dict[str, Any]],
     lithologies: List[Dict[str, Any]],
     project_utm_zone: str = None,
-    qaqc_standards: List[Dict[str, Any]] = None
+    qaqc_standards: List[Dict[str, Any]] = None,
+    trenches: List[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
     """Runs all geological validation rules on the parsed CSV data before it is committed.
-    
+
     Returns a dictionary:
     - 'valid': bool (True if there are no blocking errors; warnings do not make it invalid)
     - 'issues': list of dicts, each with keys 'type' (error/warning), 'rule', 'message', 'hole_id', 'row'
     - 'summary': dict with statistics
+
+    ``trenches`` (combined-CSV path only): trench point rows routed by
+    ``route_combined_rows``. When supplied, trench rows are kept OUT of the
+    ``collars`` list and their inline dip/azimuth OUT of ``surveys`` by the
+    caller, so the ``orphan_hole_id`` rule never fires for them. We additionally
+    enforce: the same ``hole_id`` under two different zones is an error
+    (ambiguous routing), and the same ``hole_id`` with two different
+    ``hole_type``s is an error. ``check_coordinate_anomalies`` is run per zone
+    group (collars + trench points) rather than once for the whole file, so a
+    zone with swapped coordinates is reported against that zone alone.
     """
     issues = []
-    
+
     # 1. Map collars for fast lookup and verify unique hole_ids in this batch
     collar_holes = set()
     collar_by_hole = {}
@@ -33,41 +44,130 @@ def validate_import_batch(
         collar_holes.add(h_id)
         collar_by_hole[h_id] = c
 
+    # 1b. Combined-CSV routing rules: the same hole_id under two different
+    # zones, or with two different hole_types, is ambiguous and must block.
+    if trenches is not None:
+        seen_routing: Dict[str, Dict[str, Any]] = {}
+        for i, c in enumerate(collars, start=1):
+            h_id = c["hole_id"]
+            entry = {"zone": c.get("zone"), "hole_type": c.get("hole_type"), "row": c.get("csv_row", i)}
+            if h_id in seen_routing:
+                prev = seen_routing[h_id]
+                if prev["zone"] != entry["zone"]:
+                    issues.append({
+                        "type": "error",
+                        "rule": "ambiguous_zone",
+                        "message": f"hole_id '{h_id}' appears under two different zones ('{prev['zone']}' and '{entry['zone']}')",
+                        "hole_id": h_id,
+                        "row": i
+                    })
+                if prev["hole_type"] != entry["hole_type"]:
+                    issues.append({
+                        "type": "error",
+                        "rule": "ambiguous_hole_type",
+                        "message": f"hole_id '{h_id}' appears with two different hole_types ('{prev['hole_type']}' and '{entry['hole_type']}')",
+                        "hole_id": h_id,
+                        "row": i
+                    })
+            else:
+                seen_routing[h_id] = entry
+        for j, t in enumerate(trenches, start=1):
+            h_id = t["trench_id"]
+            entry = {"zone": t.get("zone"), "hole_type": t.get("hole_type"), "row": t.get("csv_row", j)}
+            if h_id in seen_routing:
+                prev = seen_routing[h_id]
+                if prev["zone"] != entry["zone"]:
+                    issues.append({
+                        "type": "error",
+                        "rule": "ambiguous_zone",
+                        "message": f"hole_id '{h_id}' appears under two different zones ('{prev['zone']}' and '{entry['zone']}')",
+                        "hole_id": h_id,
+                        "row": j
+                    })
+                if prev["hole_type"] != entry["hole_type"]:
+                    issues.append({
+                        "type": "error",
+                        "rule": "ambiguous_hole_type",
+                        "message": f"hole_id '{h_id}' appears with two different hole_types ('{prev['hole_type']}' and '{entry['hole_type']}')",
+                        "hole_id": h_id,
+                        "row": j
+                    })
+            else:
+                seen_routing[h_id] = entry
+
     # 2. Coordinate checks (Swapped Lat/Long & UTM zone mismatch)
     from backend.src.services.crs import check_coordinate_anomalies
-    eastings = [c["easting"] for c in collars]
-    northings = [c["northing"] for c in collars]
-    
-    if collars:
-        anomalies = check_coordinate_anomalies(eastings, northings)
-        if anomalies["swapped"]:
-            issues.append({
-                "type": "error",
-                "rule": "swapped_coordinates",
-                "message": "Coordinates appear to be swapped: Eastings are > 1,000,000 and Northings are < 1,000,000",
-                "hole_id": "",
-                "row": None
-            })
-        if anomalies["out_of_bounds"]:
-            issues.append({
-                "type": "error",
-                "rule": "coordinates_out_of_bounds",
-                "message": "Coordinates are outside of valid UTM ranges",
-                "hole_id": "",
-                "row": None
-            })
-            
-        # UTM zone checks
-        for i, c in enumerate(collars, start=1):
-            c_zone = c.get("utm_zone")
-            if c_zone and project_utm_zone and c_zone != project_utm_zone:
+
+    if trenches is not None:
+        # Combined path: run check_coordinate_anomalies PER zone group (collars
+        # + trench points), rather than once for the whole file. Rows with
+        # zone=None group together (they fall back to the URL project). The
+        # per-row collar-vs-project UTM mismatch warning is skipped here because
+        # combined rows carry no row-level utm_zone -- the resolved project zone
+        # is applied at commit, and per-zone coordinate bounds are the relevant
+        # guard.
+        groups: Dict[str, List[Tuple[float, float]]] = {}
+        for c in collars:
+            groups.setdefault(str(c.get("zone")), []).append((c["easting"], c["northing"]))
+        for t in trenches:
+            if t.get("easting") is None or t.get("northing") is None:
+                continue
+            groups.setdefault(str(t.get("zone")), []).append((t["easting"], t["northing"]))
+        for zone_key, coords in groups.items():
+            eastings = [e for e, _ in coords]
+            northings = [n for _, n in coords]
+            anomalies = check_coordinate_anomalies(eastings, northings)
+            if anomalies["swapped"]:
                 issues.append({
-                    "type": "warning",
-                    "rule": "utm_zone_mismatch",
-                    "message": f"Collar UTM zone '{c_zone}' does not match project zone '{project_utm_zone}'",
-                    "hole_id": c["hole_id"],
-                    "row": i
+                    "type": "error",
+                    "rule": "swapped_coordinates",
+                    "message": f"Coordinates in zone '{zone_key}' appear to be swapped: Eastings are > 1,000,000 and Northings are < 1,000,000",
+                    "hole_id": "",
+                    "row": None
                 })
+            if anomalies["out_of_bounds"]:
+                issues.append({
+                    "type": "error",
+                    "rule": "coordinates_out_of_bounds",
+                    "message": f"Coordinates in zone '{zone_key}' are outside of valid UTM ranges",
+                    "hole_id": "",
+                    "row": None
+                })
+    else:
+        eastings = [c["easting"] for c in collars]
+        northings = [c["northing"] for c in collars]
+
+        if collars:
+            anomalies = check_coordinate_anomalies(eastings, northings)
+            if anomalies["swapped"]:
+                issues.append({
+                    "type": "error",
+                    "rule": "swapped_coordinates",
+                    "message": "Coordinates appear to be swapped: Eastings are > 1,000,000 and Northings are < 1,000,000",
+                    "hole_id": "",
+                    "row": None
+                })
+            if anomalies["out_of_bounds"]:
+                issues.append({
+                    "type": "error",
+                    "rule": "coordinates_out_of_bounds",
+                    "message": "Coordinates are outside of valid UTM ranges",
+                    "hole_id": "",
+                    "row": None
+                })
+
+            # UTM zone checks (legacy four-file path: rows carry their own
+            # utm_zone column, compared against the single project zone).
+            for i, c in enumerate(collars, start=1):
+                c_zone = c.get("utm_zone")
+                if c_zone and project_utm_zone and c_zone != project_utm_zone:
+                    issues.append({
+                        "type": "warning",
+                        "rule": "utm_zone_mismatch",
+                        "message": f"Collar UTM zone '{c_zone}' does not match project zone '{project_utm_zone}'",
+                        "hole_id": c["hole_id"],
+                        "row": i
+                    })
 
     # 3. Orphan hole_id checks (Surveys, Assays, Lithologies must have a collar in this batch)
     for i, s in enumerate(surveys, start=1):
@@ -282,6 +382,8 @@ def validate_import_batch(
         "error_count": sum(1 for issue in issues if issue["type"] == "error"),
         "warning_count": sum(1 for issue in issues if issue["type"] == "warning")
     }
+    if trenches is not None:
+        summary["trench_count"] = len(trenches)
     
     return {
         "valid": valid,

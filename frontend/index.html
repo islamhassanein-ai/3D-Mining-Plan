@@ -709,7 +709,7 @@
             <select id="utm-zone-select" class="styled-select" style="width:100%;">
               <option value="35N">35N</option>
               <option value="36N">36N</option>
-              <option value="37N">37N</option>
+              <option value="37N" selected>37N</option>
               <option value="38N">38N</option>
             </select>
             <div id="utm-zone-status" style="font-size:10px;color:var(--text-faint);min-height:14px;"></div>
@@ -1222,7 +1222,7 @@
           opt.textContent = project.utm_zone;
           select.appendChild(opt);
         }
-        select.value = project.utm_zone || '36N';
+        select.value = project.utm_zone || '37N';
       } catch (err) {
         status.textContent = 'Could not load coordinate system.';
       }

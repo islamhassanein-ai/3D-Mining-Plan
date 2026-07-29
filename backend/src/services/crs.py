@@ -1,17 +1,25 @@
 from typing import List, Dict, Any
 
+# Downstream export code (and the combined-CSV auto-project path) need to map a
+# UTM zone token to its EPSG code. The Monark field area is EPSG:32637 (UTM 37N).
+EPSG_BY_UTM_ZONE = {
+    "36N": 32636,
+    "37N": 32637,
+}
+
 def detect_utm_zone(
     eastings: List[float],
     northings: List[float],
-    project_default_zone: str = "36N"
+    project_default_zone: str = "37N"
 ) -> str:
     """Auto-detects the likely UTM zone from Easting/Northing coordinate ranges.
-    
-    If the ranges are valid UTM coordinates, returns the project_default_zone (defaults to 36N for Egypt).
+
+    If the ranges are valid UTM coordinates, returns the project_default_zone
+    (defaults to 37N -- the Monark field area in Egypt sits in UTM zone 37N).
     """
     if not eastings or not northings:
         return project_default_zone
-        
+
     # Standard UTM Easting is roughly 100,000m to 900,000m.
     # Standard UTM Northing is 0m to 10,000,000m.
     # In Egypt, Northing is between 2,400,000m and 3,500,000m.
