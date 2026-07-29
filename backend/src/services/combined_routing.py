@@ -50,6 +50,8 @@ def route_combined_rows(rows: List[Dict]) -> Dict[str, List[Dict]]:
         zone = r.get("zone")
         inline = r.get("inline_survey")
 
+        csv_row = r.get("csv_row")
+
         if hole_type in _COLLAR_TYPES:
             collar = {
                 "hole_id": hole_id,
@@ -59,6 +61,7 @@ def route_combined_rows(rows: List[Dict]) -> Dict[str, List[Dict]]:
                 "utm_zone": None,  # resolved per-project at commit
                 "hole_type": hole_type,
                 "zone": zone,
+                "csv_row": csv_row,
             }
             collars.append(collar)
 
@@ -93,7 +96,12 @@ def route_combined_rows(rows: List[Dict]) -> Dict[str, List[Dict]]:
             else:
                 # A TR/CH/FC row with no inline survey: degenerate to a single
                 # point duplicated so the polyline still has a 2-point shape
-                # (zero length). The caller may treat length 0 specially.
+                # (zero length). Logged as a warning so the user knows the
+                # trench will render as a dot in the 3D scene.
+                import logging
+                logging.getLogger(__name__).warning(
+                    "Trench %s has no inline survey — polyline degenerates to a dot", hole_id
+                )
                 far_e, far_n = x, y
                 dip = None
                 azimuth = None
@@ -109,6 +117,7 @@ def route_combined_rows(rows: List[Dict]) -> Dict[str, List[Dict]]:
                 "dip": dip,
                 "azimuth": azimuth,
                 "grade_value": None,
+                "csv_row": csv_row,
             })
             trench_points.append({
                 "trench_id": hole_id,
@@ -121,6 +130,7 @@ def route_combined_rows(rows: List[Dict]) -> Dict[str, List[Dict]]:
                 "dip": None,
                 "azimuth": None,
                 "grade_value": None,
+                "csv_row": csv_row,
             })
 
         # Any other hole_type is rejected upstream by parse_combined_csv; if it
@@ -216,8 +226,16 @@ def resolve_or_create_zone_projects(
                 owner_id=current_user.id,
             )
             db.add(project)
-            db.flush()  # get an id without a full commit, so callers can FK it
-            resolved[key] = {"project": project, "action": "created", "name": zone}
+            db.flush()
+            # Re-check after flush: a concurrent transaction could have created
+            # the same zone project between our read and this insert.  If so,
+            # expunge the duplicate and use the one that already exists.
+            rival = _match_existing_zone_project(db, current_user, key)
+            if rival is not None and rival.id != project.id:
+                db.expunge(project)
+                resolved[key] = {"project": rival, "action": "appended", "name": rival.name}
+            else:
+                resolved[key] = {"project": project, "action": "created", "name": zone}
     return resolved
 
 

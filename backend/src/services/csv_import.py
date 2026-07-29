@@ -518,6 +518,7 @@ def parse_combined_csv(file_content: bytes) -> Tuple[List[Dict[str, Any]], List[
                 "hole_type": hole_type,
                 "zone": zone,
                 "inline_survey": inline_survey,
+                "csv_row": i,
             })
         except Exception as e:
             errors.append({"row": i, "error": f"Unexpected error: {str(e)}", "raw_data": row})

@@ -248,7 +248,13 @@ def _accumulate_zone_group(groups, zone, hole_type, is_trench, project, preview,
         # Count each trench once, not once per generated point row. Without
         # this the breakdown disagrees with trench_count -- 7 trenches would
         # report a breakdown summing to 14.
-        if trench_id is None or trench_id in g["_trench_ids"]:
+        if trench_id is None:
+            import logging
+            logging.getLogger(__name__).warning(
+                "Trench point with trench_id=None dropped from preview summary"
+            )
+            return
+        if trench_id in g["_trench_ids"]:
             return
         g["_trench_ids"].add(trench_id)
     else:
@@ -689,7 +695,7 @@ def _commit_combined(db, project, batch, data, current_user, utm_zone_confirm,
         b = batches[str(p.id)]
         for pt in pts:
             db.add(Trench(
-                id=(anchor_row_id if pt["point_order"] == 0 else uuid.uuid4()),
+                id=(anchor_row_id if pt is anchor else uuid.uuid4()),
                 project_id=p.id,
                 trench_id=pt["trench_id"],
                 easting=pt["easting"],

@@ -245,7 +245,7 @@ export class ImportPanel {
       }
       .stats-summary {
         display: grid;
-        grid-template-columns: repeat(4, 1fr);
+        grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
         gap: 12px;
         margin-bottom: 20px;
       }
@@ -384,7 +384,7 @@ export class ImportPanel {
           ${this.loading ? '<div class="loading-spinner"></div> Processing...' : 'Validate Upload'}
         </button>
 
-        ${this.error ? `<div style="color:#ef4444;margin-top:16px;font-size:0.875rem;">${this.error}</div>` : ''}
+        ${this.error ? `<div style="color:#ef4444;margin-top:16px;font-size:0.875rem;">${this._esc(this.error)}</div>` : ''}
 
         <div id="validation-view" class="validation-section" style="display: none;"></div>
       </div>
@@ -423,6 +423,17 @@ export class ImportPanel {
     `;
   }
 
+  _enforceMutualExclusion(changedKey) {
+    if (changedKey === 'combined_file') {
+      this.selectedFiles.collar_file = null;
+      this.selectedFiles.survey_file = null;
+      this.selectedFiles.assay_file = null;
+      this.selectedFiles.lithology_file = null;
+    } else {
+      this.selectedFiles.combined_file = null;
+    }
+  }
+
   hasFiles() {
     return Object.values(this.selectedFiles).some(f => f !== null);
   }
@@ -449,6 +460,7 @@ export class ImportPanel {
         zone.style.borderColor = '';
         if (e.dataTransfer.files.length > 0) {
           this.selectedFiles[key] = e.dataTransfer.files[0];
+          this._enforceMutualExclusion(key);
           this.render();
         }
       });
@@ -456,6 +468,7 @@ export class ImportPanel {
       input.addEventListener('change', () => {
         if (input.files.length > 0) {
           this.selectedFiles[key] = input.files[0];
+          this._enforceMutualExclusion(key);
           this.render();
         }
       });
@@ -666,7 +679,7 @@ export class ImportPanel {
         const appended = batches.filter(b => b.action === 'appended');
         console.log('Import committed · created', created.length, 'appended', appended.length, batches);
         const lines = batches.map(b =>
-          `${this._esc(b.action === 'created' ? 'Created' : 'Appended')} project "${this._esc(b.project_name)}" (${b.collar_count} collars, ${b.trench_count} trench pts) id=${b.project_id}`
+          `${b.action === 'created' ? 'Created' : 'Appended'} project "${b.project_name}" (${b.collar_count} collars, ${b.trench_count} trench pts) id=${b.project_id}`
         ).join('\n');
         this._toast(`Import committed (${created.length} created, ${appended.length} appended):\n${lines}`);
       }

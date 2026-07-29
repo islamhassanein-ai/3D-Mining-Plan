@@ -50,7 +50,7 @@ def validate_import_batch(
         seen_routing: Dict[str, Dict[str, Any]] = {}
         for i, c in enumerate(collars, start=1):
             h_id = c["hole_id"]
-            entry = {"zone": c.get("zone"), "hole_type": c.get("hole_type"), "row": i}
+            entry = {"zone": c.get("zone"), "hole_type": c.get("hole_type"), "row": c.get("csv_row", i)}
             if h_id in seen_routing:
                 prev = seen_routing[h_id]
                 if prev["zone"] != entry["zone"]:
@@ -73,7 +73,7 @@ def validate_import_batch(
                 seen_routing[h_id] = entry
         for j, t in enumerate(trenches, start=1):
             h_id = t["trench_id"]
-            entry = {"zone": t.get("zone"), "hole_type": t.get("hole_type"), "row": j}
+            entry = {"zone": t.get("zone"), "hole_type": t.get("hole_type"), "row": t.get("csv_row", j)}
             if h_id in seen_routing:
                 prev = seen_routing[h_id]
                 if prev["zone"] != entry["zone"]:
