@@ -442,7 +442,10 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
+      cursor: grab;
+      user-select: none;
     }
+    .modal-header:active { cursor: grabbing; }
     .modal-close {
       cursor: pointer;
       background: transparent;

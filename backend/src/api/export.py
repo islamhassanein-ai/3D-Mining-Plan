@@ -318,6 +318,7 @@ def export_standalone_html(
         merged: list = []
         for a in assays:
             merged.append({
+                "interval_id": str(a.id),
                 "type": "assay",
                 "from_depth": float(a.from_depth),
                 "to_depth": float(a.to_depth),
@@ -329,6 +330,7 @@ def export_standalone_html(
             })
         for l in lithologies:
             merged.append({
+                "interval_id": str(l.id),
                 "type": "lithology",
                 "from_depth": float(l.from_depth),
                 "to_depth": float(l.to_depth),
@@ -338,7 +340,8 @@ def export_standalone_html(
             })
         merged.sort(key=lambda x: (x["from_depth"], x["to_depth"]))
 
-        collar_details[c.hole_id] = {
+        # Key by UUID so the static viewer can look up by collar_id from the scene data
+        collar_details[str(c.id)] = {
             "id": str(c.id),
             "hole_id": c.hole_id,
             "easting": float(c.easting),

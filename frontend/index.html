@@ -167,7 +167,7 @@
     </aside>
 
     <!-- Main Scene Area -->
-    <main class="main-viewport-container">
+    <main class="main-viewport-container hide-section">
       <div id="viewport-3d"></div>
 
       <!-- Small transparent controls-hint card, bottom-right corner of the 3D view -->
@@ -183,7 +183,7 @@
       <div id="section-view-container"></div>
 
       <!-- Collapse tab for the 2D Cross-Section panel -->
-      <button id="section-edge-tab" title="Hide/show 2D cross-section">&#9660;</button>
+      <button id="section-edge-tab" title="Hide/show 2D cross-section">&#9650;</button>
 
       <!-- Camera Toolbar overlay -->
       <div id="toolbar-3d-container" class="floating-toolbar"></div>
@@ -327,6 +327,18 @@
         animateResize();
       });
 
+      // Auto-apply drag behaviour whenever a .modal-card is injected into
+      // #modal-container.  MutationObserver fires synchronously after innerHTML
+      // is set, before the browser paints, so the card is always draggable from
+      // the first frame.
+      new MutationObserver(() => {
+        const card = document.querySelector('#modal-container .modal-card');
+        if (card && !card.dataset.draggable) {
+          card.dataset.draggable = '1';
+          makeDraggable(card);
+        }
+      }).observe(document.getElementById('modal-container'), { childList: true, subtree: true });
+
       // Setup Project Creation Action
       document.getElementById('create-project-btn').addEventListener('click', () => showCreateProjectModal());
 
@@ -346,6 +358,41 @@
         }
       });
     });
+
+    // Make a .modal-card freely draggable by its .modal-header.
+    // On first drag we freeze the card as position:fixed at its current screen
+    // rect so it escapes the flex-centred overlay and follows the cursor.
+    function makeDraggable(card) {
+      const header = card.querySelector('.modal-header');
+      if (!header) return;
+
+      let dragging = false, ox = 0, oy = 0;
+
+      header.addEventListener('mousedown', (e) => {
+        // Don't initiate drag from the close button
+        if (e.target.closest('.modal-close')) return;
+        const rect = card.getBoundingClientRect();
+        // Detach from the overlay's flex layout
+        card.style.position = 'fixed';
+        card.style.margin   = '0';
+        card.style.left     = rect.left + 'px';
+        card.style.top      = rect.top  + 'px';
+        ox = e.clientX - rect.left;
+        oy = e.clientY - rect.top;
+        dragging = true;
+        e.preventDefault();
+      });
+
+      window.addEventListener('mousemove', (e) => {
+        if (!dragging) return;
+        const maxL = window.innerWidth  - card.offsetWidth;
+        const maxT = window.innerHeight - card.offsetHeight;
+        card.style.left = Math.max(0, Math.min(maxL, e.clientX - ox)) + 'px';
+        card.style.top  = Math.max(0, Math.min(maxT, e.clientY - oy)) + 'px';
+      });
+
+      window.addEventListener('mouseup', () => { dragging = false; });
+    }
 
     function toggleShortcutHelp() {
       const ov = document.getElementById('shortcut-help-overlay');
