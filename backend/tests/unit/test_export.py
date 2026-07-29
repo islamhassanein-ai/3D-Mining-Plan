@@ -19,7 +19,15 @@ from backend.src.models.survey import Survey
 from backend.src.models.assay_interval import AssayInterval
 from backend.src.models.lithology_interval import LithologyInterval
 from backend.src.models.wireframe import Wireframe
+from backend.src.models.import_batch import ImportBatch
 from backend.src.storage.local_filesystem import LocalFilesystemStorage
+
+# PRE-EXISTING TEST-SETUP FIX (not in the import path): these export tests
+# manufactured a Collar with `import_batch_id=uuid.uuid4()` pointing at an
+# ImportBatch row that was never inserted. With FK enforcement ON (the
+# conftest.py PRAGMA) the collar INSERT fails the FK. The fix adds the missing
+# parent row -- the production import path never had this bug because it
+# creates the ImportBatch before the collar.
 
 # SQLite in-memory test database setup
 SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
@@ -49,13 +57,17 @@ def setup_overrides():
 def setup_db():
     Base.metadata.create_all(bind=engine)
     db = TestingSessionLocal()
-    db.query(User).delete()
-    db.query(Project).delete()
-    db.query(Collar).delete()
-    db.query(Survey).delete()
+    # Delete children BEFORE parents so FK enforcement (the conftest.py PRAGMA,
+    # matching PostgreSQL) does not reject the cleanup. Order: rows that
+    # reference others first.
     db.query(AssayInterval).delete()
     db.query(LithologyInterval).delete()
+    db.query(Survey).delete()
+    db.query(Collar).delete()
     db.query(Wireframe).delete()
+    db.query(ImportBatch).delete()
+    db.query(Project).delete()
+    db.query(User).delete()
     db.commit()
     db.close()
     yield
@@ -64,7 +76,7 @@ def test_all_exports_integration():
     db = TestingSessionLocal()
     user = User(id=uuid.uuid4(), email="export_tester@example.com", role="owner")
     proj = Project(id=uuid.uuid4(), name="Export Prospect", owner_id=user.id, utm_zone="36N")
-    
+    batch = ImportBatch(id=uuid.uuid4(), project_id=proj.id, source_file="src", status="committed")
     # Add project metadata and a collar
     collar = Collar(
         id=uuid.uuid4(),
@@ -74,7 +86,7 @@ def test_all_exports_integration():
         northing=2800000.0,
         elevation=100.0,
         utm_zone="36N",
-        import_batch_id=uuid.uuid4()
+        import_batch_id=batch.id
     )
     survey = Survey(
         id=uuid.uuid4(),
@@ -83,16 +95,19 @@ def test_all_exports_integration():
         dip=-60.0,
         azimuth=180.0
     )
-    
+
     db.add(user)
     db.add(proj)
+    db.flush()  # satisfy Project.owner_id -> user.id FK under PRAGMA enforcement
+    db.add(batch)
+    db.flush()  # satisfy ImportBatch.project_id -> project.id FK
     db.add(collar)
     db.add(survey)
     db.commit()
-    
+
     token = create_access_token(data={"sub": user.email, "role": user.role, "user_id": str(user.id)})
     headers = {"Authorization": f"Bearer {token}"}
-    
+
     # 1. Test CSV Export (ZIP archive)
     res_csv = client.get(f"/projects/{proj.id}/export/data.csv", headers=headers)
     assert res_csv.status_code == 200
@@ -162,6 +177,7 @@ def test_csv_export_per_entity():
     db = TestingSessionLocal()
     user = User(id=uuid.uuid4(), email="export_entity_tester@example.com", role="owner")
     proj = Project(id=uuid.uuid4(), name="Entity Export Prospect", owner_id=user.id, utm_zone="36N")
+    batch = ImportBatch(id=uuid.uuid4(), project_id=proj.id, source_file="src", status="committed")
     collar = Collar(
         id=uuid.uuid4(),
         project_id=proj.id,
@@ -170,11 +186,14 @@ def test_csv_export_per_entity():
         northing=2800000.0,
         elevation=100.0,
         utm_zone="36N",
-        import_batch_id=uuid.uuid4()
+        import_batch_id=batch.id
     )
     survey = Survey(id=uuid.uuid4(), collar_id=collar.id, depth=10.0, dip=-60.0, azimuth=90.0)
     db.add(user)
     db.add(proj)
+    db.flush()  # satisfy Project.owner_id -> user.id FK under PRAGMA enforcement
+    db.add(batch)
+    db.flush()  # satisfy ImportBatch.project_id -> project.id FK
     db.add(collar)
     db.add(survey)
     db.commit()
@@ -209,6 +228,8 @@ def test_csv_export_preserves_grade_unit_and_bdl_status():
     db = TestingSessionLocal()
     user = User(id=uuid.uuid4(), email="export_bdl_tester@example.com", role="owner")
     proj = Project(id=uuid.uuid4(), name="BDL Export Prospect", owner_id=user.id, utm_zone="36N")
+    collar_batch = ImportBatch(id=uuid.uuid4(), project_id=proj.id, source_file="src", status="committed")
+    assay_batch = ImportBatch(id=uuid.uuid4(), project_id=proj.id, source_file="src", status="committed")
     collar = Collar(
         id=uuid.uuid4(),
         project_id=proj.id,
@@ -217,7 +238,7 @@ def test_csv_export_preserves_grade_unit_and_bdl_status():
         northing=2800000.0,
         elevation=100.0,
         utm_zone="36N",
-        import_batch_id=uuid.uuid4()
+        import_batch_id=collar_batch.id
     )
     # A below-detection-limit sample reported in "%", to prove both fields
     # survive the export -- if either is dropped, this specific combination
@@ -231,11 +252,16 @@ def test_csv_export_preserves_grade_unit_and_bdl_status():
         grade_value=0.01,
         grade_unit="%",
         below_detection_limit=True,
-        import_batch_id=uuid.uuid4()
+        import_batch_id=assay_batch.id
     )
     db.add(user)
     db.add(proj)
+    db.flush()  # satisfy Project.owner_id -> user.id FK under PRAGMA enforcement
+    db.add(collar_batch)
+    db.add(assay_batch)
+    db.flush()  # satisfy ImportBatch.project_id -> project.id FK
     db.add(collar)
+    db.flush()  # satisfy Collar.import_batch_id -> import_batch.id FK
     db.add(assay)
     db.commit()
 

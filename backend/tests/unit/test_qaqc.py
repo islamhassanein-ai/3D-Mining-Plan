@@ -41,9 +41,29 @@ def setup_overrides():
 def setup_db():
     Base.metadata.create_all(bind=engine)
     db = TestingSessionLocal()
-    db.query(User).delete()
-    db.query(Project).delete()
+    # Delete children before parents so FK enforcement (conftest.py PRAGMA,
+    # matching PostgreSQL) does not reject the cleanup.
+    from backend.src.models.collar import Collar
+    from backend.src.models.survey import Survey
+    from backend.src.models.assay_interval import AssayInterval
+    from backend.src.models.lithology_interval import LithologyInterval
+    from backend.src.models.import_batch import ImportBatch
+    from backend.src.models.share_link import ShareLink
+    from backend.src.models.structural_reading import StructuralReading
+    from backend.src.models.wireframe import Wireframe
+    from backend.src.models.trench import Trench
+    db.query(AssayInterval).delete()
+    db.query(LithologyInterval).delete()
+    db.query(Survey).delete()
+    db.query(Collar).delete()
+    db.query(Trench).delete()
+    db.query(Wireframe).delete()
+    db.query(StructuralReading).delete()
     db.query(QaqcStandard).delete()
+    db.query(ShareLink).delete()
+    db.query(ImportBatch).delete()
+    db.query(Project).delete()
+    db.query(User).delete()
     db.commit()
     db.close()
     yield

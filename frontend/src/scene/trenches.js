@@ -90,14 +90,25 @@ export class TrenchesRenderer {
         easting: t.easting,
         northing: t.northing,
         elevation: t.elevation != null ? t.elevation : baselineElevation,
-        grade: t.grade_value
+        grade: t.grade_value,
+        point_order: t.point_order
       });
     }
 
     const accsByBucket = Array.from({ length: GRADE_BUCKETS.length }, () => newAcc());
 
     for (const points of groups.values()) {
-      const ordered = orderTrenchPoints(points);
+      // When every point in the group carries a point_order (the combined-CSV
+      // import stamps 0..N), order is authoritative -- use it directly. Legacy
+      // trench rows have point_order = null and must keep falling back to the
+      // nearest-neighbour chaining in orderTrenchPoints (which itself returns
+      // early for length <= 2). Do NOT delete orderTrenchPoints.
+      let ordered;
+      if (points.length > 0 && points.every(p => p.point_order !== null && p.point_order !== undefined)) {
+        ordered = points.slice().sort((a, b) => a.point_order - b.point_order);
+      } else {
+        ordered = orderTrenchPoints(points);
+      }
       for (let i = 0; i < ordered.length - 1; i++) {
         const a = ordered[i], b = ordered[i + 1];
         const p0 = new THREE.Vector3(a.easting, a.elevation, a.northing);

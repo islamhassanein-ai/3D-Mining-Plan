@@ -153,8 +153,15 @@ def get_project_scene(
             "lithologies": scene_lithologies
         })
         
-    # Fetch trenches
-    trenches = db.query(Trench).filter(Trench.project_id == project.id).all()
+    # Fetch trenches -- only active (non-superseded) rows, ordered so the
+    # frontend can reconstruct polyline order. superseded_by points at the
+    # replacement anchor (point_order=0) row; reads must filter it out so a
+    # re-import of the combined CSV doesn't render both the old and new
+    # overlapping polylines.
+    trenches = db.query(Trench).filter(
+        Trench.project_id == project.id,
+        Trench.superseded_by.is_(None)
+    ).order_by(Trench.trench_id, Trench.point_order).all()
     scene_trenches = [
         {
             "id": str(t.id),
@@ -162,7 +169,11 @@ def get_project_scene(
             "easting": t.easting,
             "northing": t.northing,
             "elevation": t.elevation,
-            "grade_value": float(t.grade_value) if t.grade_value is not None else None
+            "grade_value": float(t.grade_value) if t.grade_value is not None else None,
+            "point_order": t.point_order,
+            "hole_type": t.hole_type,
+            "dip": t.dip,
+            "azimuth": t.azimuth
         }
         for t in trenches
     ]

@@ -17,6 +17,10 @@ class Collar(Base):
     import_batch_id = Column(UUID(as_uuid=True), ForeignKey("import_batch.id"), nullable=False)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     superseded_by = Column(UUID(as_uuid=True), ForeignKey("collar.id"), nullable=True)
+    # DD / RC / TR / CH / FC. Nullable for historical rows; the T001 migration
+    # backfills 'DD' for existing collars. Populated by the combined-CSV import;
+    # the four-file collar importer leaves it NULL (those rows are implicitly DD).
+    hole_type = Column(String(10), nullable=True)
 
     # Relationships
     project = relationship("Project", back_populates="collars", foreign_keys=[project_id])
@@ -27,4 +31,5 @@ class Collar(Base):
 
     __table_args__ = (
         Index("idx_collar_project_hole", "project_id", "hole_id"),
+        Index("idx_collar_project_hole_type", "project_id", "hole_type"),
     )

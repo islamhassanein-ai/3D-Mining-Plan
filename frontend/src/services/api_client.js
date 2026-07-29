@@ -102,6 +102,10 @@ export const ApiClient = {
     if (files.survey_file) formData.append('survey_file', files.survey_file);
     if (files.assay_file) formData.append('assay_file', files.assay_file);
     if (files.lithology_file) formData.append('lithology_file', files.lithology_file);
+    // Combined Master Reference CSV: one file mixing all hole types and
+    // zones. Sent alongside the four legacy slots (mutually exclusive in
+    // practice; the backend parses whichever are supplied).
+    if (files.combined_file) formData.append('combined_file', files.combined_file);
 
     const res = await fetch(`${API_BASE_URL}/projects/${projectId}/imports`, {
       method: 'POST',

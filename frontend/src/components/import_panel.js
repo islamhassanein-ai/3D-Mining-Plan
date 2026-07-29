@@ -9,7 +9,8 @@ export class ImportPanel {
       collar_file: null,
       survey_file: null,
       assay_file: null,
-      lithology_file: null
+      lithology_file: null,
+      combined_file: null
     };
     this.batchId = null;
     this.validationData = null;
@@ -293,6 +294,7 @@ export class ImportPanel {
           ${this.renderDropzone('survey_file', 'Survey CSV')}
           ${this.renderDropzone('assay_file', 'Assay CSV')}
           ${this.renderDropzone('lithology_file', 'Lithology CSV')}
+          ${this.renderDropzone('combined_file', 'Combined CSV')}
         </div>
 
         <button id="upload-btn" class="btn-primary" ${this.hasFiles() ? '' : 'disabled'}>
@@ -417,7 +419,14 @@ export class ImportPanel {
           <div class="stat-val">${stats.lithology_count}</div>
           <div class="stat-lbl">Lithology</div>
         </div>
+        ${stats.trench_count !== undefined ? `
+        <div class="stat-card">
+          <div class="stat-val">${stats.trench_count}</div>
+          <div class="stat-lbl">Trench pts</div>
+        </div>` : ''}
       </div>
+
+      ${v.zones && v.zones.length > 0 ? this.renderZonesBreakdown(v.zones) : ''}
 
       ${v.issues.length > 0 ? `
         <div style="font-size:0.875rem;font-weight:600;margin-bottom:8px;color:#f3f4f6;">Geological Audit Log:</div>
@@ -436,7 +445,7 @@ export class ImportPanel {
 
       <div class="utm-confirm-box">
         <label for="utm-zone-confirm">Confirm Projection UTM Zone:</label>
-        <input type="text" id="utm-zone-confirm" value="${v.detected_utm_zone || '36N'}">
+        <input type="text" id="utm-zone-confirm" value="${v.detected_utm_zone || '37N'}">
       </div>
 
       ${hasWarnings ? `
@@ -460,7 +469,7 @@ export class ImportPanel {
   async handleCommit() {
     const utmZone = this.container.querySelector('#utm-zone-confirm').value.trim();
     if (!utmZone) {
-      alert('Please enter a valid UTM zone to commit (e.g., 36N).');
+      alert('Please enter a valid UTM zone to commit (e.g., 37N).');
       return;
     }
 
@@ -476,10 +485,19 @@ export class ImportPanel {
     this.render();
 
     try {
-      await ApiClient.commitImport(this.projectId, this.batchId, utmZone, acknowledgeWarnings);
+      const commitResult = await ApiClient.commitImport(this.projectId, this.batchId, utmZone, acknowledgeWarnings);
+      // Multi-project combined imports produce a `batches` summary. A single
+      // four-file import still returns one batch row (the URL project). Show
+      // the result so creating four new projects is not an invisible side
+      // effect of clicking Commit, then reload the scene for the current
+      // project (the others are linked from the summary).
+      this._renderCommitResult(commitResult);
       this.validationData = null;
       this.batchId = null;
-      this.selectedFiles = { collar_file: null, survey_file: null, assay_file: null, lithology_file: null };
+      this.selectedFiles = {
+        collar_file: null, survey_file: null, assay_file: null,
+        lithology_file: null, combined_file: null
+      };
       this.loading = false;
       this.render();
       if (this.onCommit) this.onCommit();
@@ -488,6 +506,80 @@ export class ImportPanel {
       this.render();
       alert(`Commit failed: ${err.message}`);
     }
+  }
+
+  renderZonesBreakdown(zones) {
+    // Preview of which projects will be created vs appended BEFORE commit, so
+    // the user can reject rather than blindly create four new projects.
+    const rows = zones.map(z => {
+      const label = z.zone === null || z.zone === undefined
+        ? '<em>(no zone — current project)</em>'
+        : this._esc(z.zone || '');
+      const actionPill = z.action === 'created'
+        ? '<span style="color:#fbbf24">will CREATE</span>'
+        : '<span style="color:#34d399">APPEND</span>';
+      const types = Object.entries(z.hole_type_breakdown || {})
+        .map(([t, n]) => `${this._esc(t)}:${n}`).join(', ');
+      const pid = z.project_id ? `<code>${z.project_id.slice(0,8)}…</code>` : '<em>new</em>';
+      return `<tr>
+        <td>${label}</td>
+        <td>${actionPill}</td>
+        <td>${pid}</td>
+        <td>${z.collar_count}</td>
+        <td>${z.trench_count}</td>
+        <td>${types}</td>
+      </tr>`;
+    }).join('');
+    const styles = `
+      .zones-table{width:100%;border-collapse:collapse;font-size:0.78rem;margin-bottom:16px}
+      .zones-table th,.zones-table td{padding:5px 8px;border-bottom:1px solid rgba(255,255,255,0.08);text-align:left}
+      .zones-table th{color:#9ca3af;font-weight:600;text-transform:uppercase;font-size:0.62rem}
+      .zones-title{font-size:0.875rem;font-weight:600;margin:8px 0;color:#f3f4f6}
+    `;
+    if (!document.getElementById('import-zones-styles')) {
+      const s = document.createElement('style'); s.id = 'import-zones-styles'; s.textContent = styles; document.head.appendChild(s);
+    }
+    return `
+      <div class="zones-title">Zone routing preview (projects ${this._hasCreation(zones) ? 'to CREATE &amp; APPEND' : 'to APPEND'})</div>
+      <table class="zones-table">
+        <thead><tr><th>Zone</th><th>Action</th><th>Project</th><th>Collars</th><th>Trench pts</th><th>Types</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    `;
+  }
+
+  _hasCreation(zones) { return zones.some(z => z.action === 'created'); }
+
+  _esc(s) {
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  _renderCommitResult(commitResult) {
+    // Surface the per-project batches after commit so a multi-project import
+    // is not invisible (handleCommit previously only reloaded the current
+    // project's scene). Logged to console and shown as a dismissible toast;
+    // each created/appended project is listed with its id for navigation.
+    try {
+      const batches = (commitResult && commitResult.batches) || [];
+      if (batches.length) {
+        const created = batches.filter(b => b.action === 'created');
+        const appended = batches.filter(b => b.action === 'appended');
+        console.log('Import committed · created', created.length, 'appended', appended.length, batches);
+        const lines = batches.map(b =>
+          `${this._esc(b.action === 'created' ? 'Created' : 'Appended')} project "${this._esc(b.project_name)}" (${b.collar_count} collars, ${b.trench_count} trench pts) id=${b.project_id}`
+        ).join('\n');
+        this._toast(`Import committed (${created.length} created, ${appended.length} appended):\n${lines}`);
+      }
+    } catch (e) { /* non-fatal UI */ }
+  }
+
+  _toast(message) {
+    const t = document.createElement('div');
+    t.className = 'import-commit-toast';
+    t.style.cssText = 'position:fixed;right:16px;bottom:16px;max-width:420px;white-space:pre-line;background:rgba(17,24,39,0.97);border:1px solid rgba(16,185,129,0.4);color:#e2e8f0;padding:12px 14px;border-radius:8px;font-size:0.8rem;z-index:9999;box-shadow:0 8px 24px rgba(0,0,0,0.4)';
+    t.textContent = message;
+    document.body.appendChild(t);
+    setTimeout(() => { t.style.transition='opacity 0.4s'; t.style.opacity='0'; setTimeout(()=>t.remove(), 400); }, 7000);
   }
 
   async handleReject() {

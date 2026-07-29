@@ -20,4 +20,8 @@ class ImportBatch(Base):
     # Relationships
     collars = relationship("Collar", back_populates="import_batch")
     assay_intervals = relationship("AssayInterval", back_populates="import_batch")
+    # Trench rows committed through the combined-CSV import path; the legacy
+    # trench uploaders in projects.py never populate import_batch_id, so this
+    # is empty for those rows.
+    trenches = relationship("Trench", back_populates="import_batch")
     importing_user = relationship("User", foreign_keys=[created_by])
