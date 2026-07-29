@@ -40,8 +40,9 @@ export function parseOBJ(text) {
 }
 
 export class WireframesRenderer {
-  constructor(scene) {
+  constructor(scene, resolveGeometry = null) {
     this.scene = scene;
+    this.resolveGeometry = resolveGeometry;
     this.group = new THREE.Group();
     this.group.name = 'vein-wireframes';
     this.scene.add(this.group);
@@ -50,8 +51,6 @@ export class WireframesRenderer {
   async render(wireframes) {
     this.clear();
     if (!wireframes || wireframes.length === 0) return;
-
-    const API_BASE_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') ? 'http://localhost:8000' : '';
 
     for (const w of wireframes) {
       // Topography is handled separately by TopographyRenderer
@@ -73,14 +72,14 @@ export class WireframesRenderer {
             indices.push(f[0], f[1], f[2]);
           }
         } else {
-          // Fallback to fetch and parse OBJ
-          const response = await fetch(`${API_BASE_URL}/uploads/${w.file_ref}`);
-          if (!response.ok) throw new Error(`Failed to load wireframe file: ${w.file_ref}`);
-          
-          const text = await response.text();
-          const parsed = parseOBJ(text);
-          vertices = parsed.vertices;
-          indices = parsed.indices;
+          if (!this.resolveGeometry) { continue; }
+          const resolved = await this.resolveGeometry(w);
+          if (resolved === null) {
+            console.warn(`Wireframe ${w.name}: geometry could not be resolved, skipping`);
+            continue;
+          }
+          vertices = resolved.vertices;
+          indices = resolved.indices;
         }
         
         if (vertices.length === 0) continue;

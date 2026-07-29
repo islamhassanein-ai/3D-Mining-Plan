@@ -4,6 +4,7 @@ import os
 import uuid
 import zipfile
 import json
+from pathlib import Path
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -214,6 +215,113 @@ def test_csv_export_per_entity():
 
     res_bad = client.get(f"/projects/{proj.id}/export/data.csv?entity=not_a_real_entity", headers=headers)
     assert res_bad.status_code == 400
+
+
+# ── T019 — standalone.html endpoint authorization ────────────────────────
+
+@pytest.fixture()
+def minimal_frontend(tmp_path, monkeypatch):
+    """Seed the three static viewer assets so the endpoint can read them."""
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    (dist / "export_viewer.js").write_text("// viewer", encoding="utf-8")
+    styles = tmp_path / "styles"
+    styles.mkdir()
+    (styles / "app.css").write_text("/* css */", encoding="utf-8")
+    shell_dir = tmp_path / "src" / "export"
+    shell_dir.mkdir(parents=True)
+    (shell_dir / "shell.html").write_text(
+        "<div id='viewport-3d'></div>", encoding="utf-8"
+    )
+    monkeypatch.setattr("backend.src.api.export._FRONTEND_DIR", str(tmp_path))
+    return tmp_path
+
+
+def _seed_minimal_project(db, email="sa_owner@example.com"):
+    user = User(id=uuid.uuid4(), email=email, role="owner")
+    proj = Project(id=uuid.uuid4(), name="SA Test", owner_id=user.id, utm_zone="36N")
+    collar = Collar(
+        id=uuid.uuid4(), project_id=proj.id, hole_id="SA001",
+        easting=350000.0, northing=2800000.0, elevation=100.0,
+        utm_zone="36N", import_batch_id=uuid.uuid4()
+    )
+    survey = Survey(id=uuid.uuid4(), collar_id=collar.id,
+                    depth=50.0, dip=-60.0, azimuth=180.0)
+    db.add_all([user, proj, collar, survey])
+    db.commit()
+    return user, proj
+
+
+def test_standalone_html_owner(minimal_frontend):
+    db = TestingSessionLocal()
+    user, proj = _seed_minimal_project(db)
+    token = create_access_token(
+        data={"sub": user.email, "role": user.role, "user_id": str(user.id)}
+    )
+    res = client.get(
+        f"/projects/{proj.id}/export/standalone.html",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert res.status_code == 200
+    assert "text/html" in res.headers["content-type"]
+    assert "attachment" in res.headers.get("content-disposition", "")
+
+
+def test_standalone_html_non_owner(minimal_frontend):
+    db = TestingSessionLocal()
+    owner = User(id=uuid.uuid4(), email="sa_owner2@example.com", role="owner")
+    other = User(id=uuid.uuid4(), email="sa_other@example.com", role="owner")
+    proj = Project(id=uuid.uuid4(), name="SA Private", owner_id=owner.id, utm_zone="36N")
+    db.add_all([owner, other, proj])
+    db.commit()
+    token = create_access_token(
+        data={"sub": other.email, "role": other.role, "user_id": str(other.id)}
+    )
+    res = client.get(
+        f"/projects/{proj.id}/export/standalone.html",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert res.status_code == 404
+
+
+def test_standalone_html_unauthenticated(minimal_frontend):
+    db = TestingSessionLocal()
+    _, proj = _seed_minimal_project(db, email="sa_unauth@example.com")
+    res = client.get(f"/projects/{proj.id}/export/standalone.html")
+    assert res.status_code == 401
+
+
+def test_standalone_html_unknown_project(minimal_frontend):
+    db = TestingSessionLocal()
+    user = User(id=uuid.uuid4(), email="sa_missing@example.com", role="owner")
+    db.add(user)
+    db.commit()
+    token = create_access_token(
+        data={"sub": user.email, "role": user.role, "user_id": str(user.id)}
+    )
+    res = client.get(
+        f"/projects/{uuid.uuid4()}/export/standalone.html",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert res.status_code == 404
+
+
+def test_standalone_html_empty_project(minimal_frontend):
+    """A project with zero drillholes must produce a valid 200 export."""
+    db = TestingSessionLocal()
+    user = User(id=uuid.uuid4(), email="sa_empty@example.com", role="owner")
+    proj = Project(id=uuid.uuid4(), name="Empty SA", owner_id=user.id, utm_zone="36N")
+    db.add_all([user, proj])
+    db.commit()
+    token = create_access_token(
+        data={"sub": user.email, "role": user.role, "user_id": str(user.id)}
+    )
+    res = client.get(
+        f"/projects/{proj.id}/export/standalone.html",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert res.status_code == 200
+    assert b"<!DOCTYPE html>" in res.content
 
 
 def test_csv_export_preserves_grade_unit_and_bdl_status():

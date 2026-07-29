@@ -26,7 +26,9 @@ export class ProjectSwitcher {
     projects.forEach(p => {
       const opt = document.createElement('option');
       opt.value = p.id;
-      opt.textContent = `${p.name} (${p.commodity || 'Gold'})`;
+      const commodity = p.commodity || 'Gold';
+      const suffix = ` (${commodity})`;
+      opt.textContent = p.name.endsWith(suffix) ? p.name : `${p.name}${suffix}`;
       this.select.appendChild(opt);
     });
     

@@ -1,4 +1,3 @@
-import { ApiClient } from '../services/api_client.js';
 
 export class InspectorPanel {
   constructor(container, options = {}) {
@@ -8,7 +7,7 @@ export class InspectorPanel {
     this.loading = false;
     this.error = null;
     this.highlightedIntervalId = null; // To highlight a specific interval if clicked in 3D
-    this.shareToken = options.shareToken || null;
+    this.dataSource = options.dataSource || null;
 
     this.init();
   }
@@ -171,11 +170,7 @@ export class InspectorPanel {
     this.render();
 
     try {
-      if (this.shareToken) {
-        this.data = await ApiClient.getSharedCollar(this.shareToken, collarId);
-      } else {
-        this.data = await ApiClient.getCollarDetails(collarId);
-      }
+      this.data = await this.dataSource.getCollarDetails(collarId);
       this.loading = false;
       this.activeTab = 'logs'; // Default tab
       this.render();
@@ -443,11 +438,7 @@ export class InspectorPanel {
         
         try {
           let res;
-          if (this.shareToken) {
-            res = await ApiClient.getSharedTrueThickness(this.shareToken, this.collarId, this.highlightedIntervalId, dipDir, dip);
-          } else {
-            res = await ApiClient.getTrueThickness(this.collarId, this.highlightedIntervalId, dipDir, dip);
-          }
+          res = await this.dataSource.getTrueThickness(this.collarId, this.highlightedIntervalId, dipDir, dip);
           resDiv.innerHTML = `
             <div>✓ True Thickness: <strong style="color:white;font-size:0.95rem">${res.true_thickness.toFixed(2)}m</strong></div>
             <div style="font-size:0.7rem;color:#94a3b8;font-weight:normal;margin-top:2px;">

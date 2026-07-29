@@ -1,0 +1,210 @@
+<div class="app-layout">
+  <!-- Top Header Bar -->
+  <div id="app-header">
+    <div class="brand">
+      <div class="mark">
+        <svg viewBox="0 0 24 24"><path fill="currentColor" d="M22.7,19L13.6,9.9C14.5,7.6 14,4.9 12.1,3C10.1,1 7.1,0.6 4.7,1.7L9,6L6,9L1.6,4.7C0.4,7.1 0.9,10.1 2.9,12.1C4.8,14 7.5,14.5 9.8,13.6L18.9,22.7C19.3,23.1 19.9,23.1 20.3,22.7L22.6,20.4C23.1,20 23.1,19.3 22.7,19Z"/></svg>
+      </div>
+      <div>
+        <h1>MONARK 3D MINING <span id="header-project-name"></span></h1>
+        <div class="sub">Drillhole &bull; Trench &bull; Vein Interpretation Visualizer</div>
+      </div>
+    </div>
+    <span class="export-chip">STATIC EXPORT</span>
+    <div class="meta" id="header-stats" style="display:none;">
+      <div class="meta-group">
+        <span class="meta-group-label">DD</span>
+        <div><b id="dd-sum-holes">0</b>Holes</div>
+        <div><b id="dd-sum-meters">0</b>Meters</div>
+        <div><b id="dd-sum-avg">0</b>Avg g/t</div>
+        <div><b id="dd-sum-peak" class="gold-val">0</b>Peak g/t</div>
+      </div>
+      <div class="meta-divider"></div>
+      <div class="meta-group">
+        <span class="meta-group-label">Trenches</span>
+        <div><b id="tr-sum-count">0</b>Trenches</div>
+        <div><b id="tr-sum-samples">0</b>Samples</div>
+        <div><b id="tr-sum-avg">0</b>Avg g/t</div>
+        <div><b id="tr-sum-peak" class="gold-val">0</b>Peak g/t</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="app-body hide-right" id="app-body">
+    <!-- Left Sidebar (project selector and Data Actions removed per FR-014) -->
+    <aside class="sidebar">
+      <div class="sidebar-content">
+        <div id="visualizer-controls" class="sidebar-section" style="display: none;">
+
+          <div class="section-title">Visual Controls</div>
+
+          <!-- Grade Cutoff -->
+          <div class="control-card">
+            <span class="control-label">Au Grade Cutoff (g/t)</span>
+            <div id="cutoff-slider-container"></div>
+            <div id="grade-histogram-container" style="margin-top:4px;"></div>
+          </div>
+
+          <!-- Grade Legend -->
+          <div class="control-card">
+            <span class="control-label">Au Grade Scale (g/t)</span>
+            <div class="grade-legend">
+              <div class="grade-item"><span class="sw" style="background:#ff00ff"></span> &gt; 1.0 <b>High</b></div>
+              <div class="grade-item"><span class="sw" style="background:#f72809"></span> 0.5 &ndash; 1.0</div>
+              <div class="grade-item"><span class="sw" style="background:#fef600"></span> 0.1 &ndash; 0.5</div>
+              <div class="grade-item"><span class="sw" style="background:#27ea5b"></span> 0.05 &ndash; 0.1</div>
+              <div class="grade-item"><span class="sw" style="background:#2b24eb"></span> 0.01 &ndash; 0.05</div>
+              <div class="grade-item"><span class="sw" style="background:#7d8b8f"></span> 0 &ndash; 0.01 <b>BG</b></div>
+            </div>
+            <p style="font-size:10px;color:var(--text-faint);line-height:1.5;margin:6px 0 0 0;">Cylinder diameter scales with grade bucket &mdash; higher-grade intervals render visibly thicker.</p>
+          </div>
+
+          <!-- Layer Toggles -->
+          <div class="control-card">
+            <span class="control-label">Layers</span>
+            <div id="layer-toggles-container"></div>
+          </div>
+
+          <!-- Topography Display Mode -->
+          <div class="control-card">
+            <span class="control-label">Topography Display</span>
+            <div class="view-btns">
+              <button class="vbtn active" id="topo-mode-mesh" data-mode="mesh">Terrain Mesh</button>
+              <button class="vbtn" id="topo-mode-points" data-mode="points">Point Cloud</button>
+            </div>
+          </div>
+
+          <!-- Go to Coordinate -->
+          <div class="control-card">
+            <span class="control-label">Go to Coordinate</span>
+            <div style="display:flex;gap:6px;">
+              <input type="number" id="goto-easting" placeholder="Easting" style="width:34%;background:rgba(0,0,0,0.3);border:1px solid var(--border-light);color:var(--text-main);padding:6px;border-radius:6px;font-size:0.75rem;">
+              <input type="number" id="goto-northing" placeholder="Northing" style="width:34%;background:rgba(0,0,0,0.3);border:1px solid var(--border-light);color:var(--text-main);padding:6px;border-radius:6px;font-size:0.75rem;">
+              <input type="number" id="goto-elevation" placeholder="Z (opt.)" style="width:32%;background:rgba(0,0,0,0.3);border:1px solid var(--border-light);color:var(--text-main);padding:6px;border-radius:6px;font-size:0.75rem;">
+            </div>
+            <button id="goto-btn" class="btn-small" style="width:100%;">Go</button>
+          </div>
+
+          <!-- Camera Presets -->
+          <div class="control-card">
+            <span class="control-label">Camera Presets</span>
+            <div class="view-btns">
+              <button class="vbtn" data-preset="isometric">Isometric</button>
+              <button class="vbtn" data-preset="plan">Plan View</button>
+              <button class="vbtn" data-preset="section_ns">Section N-S</button>
+              <button class="vbtn" data-preset="section_ew">Section E-W</button>
+            </div>
+            <button id="reset-camera-btn">&#8635; Reset Camera</button>
+          </div>
+
+          <!-- 3D Ruler -->
+          <div class="control-card">
+            <div class="row-spread">
+              <span class="control-label">3D Ruler Tool</span>
+              <button id="toggle-ruler-btn" class="btn-small">Activate</button>
+            </div>
+            <div id="ruler-results" style="display: none; margin-top: 8px;">
+              <div style="font-size:0.8rem;font-weight:700;">Distance: <span id="ruler-distance-val" style="color:var(--accent-green);">-</span></div>
+              <div style="font-size:0.7rem;color:var(--text-muted);margin-top:4px;">
+                dX: <span id="ruler-dx-val">-</span> |
+                dY (Elev): <span id="ruler-dy-val">-</span> |
+                dZ (North): <span id="ruler-dz-val">-</span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <div class="sidebar-footer">
+        <div style="display:flex;align-items:center;justify-content:flex-end;">
+          <button id="shortcut-help-btn" title="Keyboard shortcuts (?)"
+            style="background:transparent;border:1px solid var(--border-light);color:var(--text-muted);width:22px;height:22px;border-radius:5px;cursor:pointer;font-size:11px;font-weight:700;flex-shrink:0;">?</button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Scene Area -->
+    <main class="main-viewport-container">
+      <div id="viewport-3d"></div>
+
+      <!-- Small transparent controls-hint card, bottom-right corner of the 3D view -->
+      <div id="viewport-hint-card">
+        <button id="hint-close-btn" title="Dismiss">&times;</button>
+        <div><b>Drag</b> to orbit</div>
+        <div><b>Scroll</b> to zoom</div>
+        <div><b>Right-drag</b> to pan</div>
+        <div><b>Click</b> a trace/interval to inspect</div>
+      </div>
+
+      <!-- Camera Toolbar overlay -->
+      <div id="toolbar-3d-container" class="floating-toolbar"></div>
+    </main>
+
+    <!-- Right Sidebar (Inspector) -->
+    <aside class="right-sidebar">
+      <div id="inspector-container"></div>
+    </aside>
+
+    <!-- Panel collapse tabs, attached to each panel's own edge -->
+    <button id="left-edge-tab" class="panel-edge-tab" title="Hide/show left panel">&#9664;</button>
+    <button id="right-edge-tab" class="panel-edge-tab" title="Hide/show right panel">&#9654;</button>
+  </div>
+
+  <!-- Export provenance footer (populated at runtime via textContent — never server-side) -->
+  <footer id="export-footer">
+    <div class="export-footer-meta">
+      <span id="export-project-name"></span>
+      <span class="export-footer-sep">&bull;</span>
+      <span id="export-utm-zone"></span>
+    </div>
+    <div class="export-footer-provenance">
+      <span id="export-timestamp"></span>
+      <span class="export-footer-sep">&bull;</span>
+      <span id="export-by"></span>
+    </div>
+    <div class="export-footer-counts">
+      <span id="export-holes-count"></span>
+      <span id="export-meters-count"></span>
+    </div>
+    <div id="export-notices"></div>
+  </footer>
+</div>
+
+<!-- Dynamic modal host (floating inspector cards, etc.) -->
+<div id="modal-container"></div>
+
+<!-- Loading State -->
+<div id="global-loading" class="loading-overlay" style="display: none;">
+  <div class="spinner"></div>
+  <div id="loading-msg" style="font-weight: 600;">Initializing Visualizer...</div>
+</div>
+
+<!-- Keyboard shortcuts reference (toggle with '?') — standalone fixed card, no backdrop overlay -->
+<div id="shortcut-help-overlay" class="modal-card" style="display:none;position:fixed;top:80px;right:24px;max-width:440px;width:90vw;z-index:200;">
+  <div class="modal-header">
+    <span>Keyboard Shortcuts</span>
+    <button class="modal-close" onclick="hideShortcutHelp()">&times;</button>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:16px;">
+    <div>
+      <div class="section-title" style="margin-bottom:8px;">Camera Views</div>
+      <div class="kbd-row"><span>Plan (top-down) view</span><kbd>P</kbd></div>
+      <div class="kbd-row"><span>Section, North&ndash;South</span><kbd>N</kbd></div>
+      <div class="kbd-row"><span>Section, East&ndash;West</span><kbd>E</kbd></div>
+      <div class="kbd-row"><span>Isometric view</span><kbd>I</kbd></div>
+    </div>
+    <div>
+      <div class="section-title" style="margin-bottom:8px;">3D Navigation</div>
+      <div class="kbd-row"><span>Orbit</span><kbd>Drag</kbd></div>
+      <div class="kbd-row"><span>Pan</span><kbd>Right-drag</kbd></div>
+      <div class="kbd-row"><span>Zoom</span><kbd>Scroll</kbd></div>
+      <div class="kbd-row"><span>Inspect a trace / interval</span><kbd>Click</kbd></div>
+    </div>
+    <div>
+      <div class="section-title" style="margin-bottom:8px;">General</div>
+      <div class="kbd-row"><span>Toggle this help</span><kbd>?</kbd></div>
+      <div class="kbd-row"><span>Close dialogs</span><kbd>Esc</kbd></div>
+    </div>
+  </div>
+</div>

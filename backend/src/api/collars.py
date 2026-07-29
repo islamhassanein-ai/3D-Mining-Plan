@@ -1,3 +1,4 @@
+import math
 import uuid
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -15,6 +16,71 @@ from backend.src.services.grade_coloring import get_grade_color
 from backend.src.api.project_access import enforce_project_ownership
 
 router = APIRouter(prefix="/collars", tags=["collars"])
+
+
+def _compute_true_thickness_math(from_depth, to_depth, surveys_data, dip_direction, dip, collar_id=None, interval_id=None):
+    """Pure true-thickness calculation. surveys_data: list of {depth, dip, azimuth} dicts.
+    Mirrors frontend/src/services/true_thickness.js so the two stay diffable."""
+    apparent_thickness = to_depth - from_depth
+    mid_depth = (from_depth + to_depth) / 2.0
+
+    hole_dip = -90.0
+    hole_az = 0.0
+
+    if len(surveys_data) == 1:
+        hole_dip = float(surveys_data[0]['dip'])
+        hole_az = float(surveys_data[0]['azimuth'])
+    elif len(surveys_data) > 1:
+        s1 = surveys_data[0]
+        s2 = surveys_data[-1]
+        if mid_depth <= float(s1['depth']):
+            hole_dip = float(s1['dip'])
+            hole_az = float(s1['azimuth'])
+        elif mid_depth >= float(s2['depth']):
+            hole_dip = float(s2['dip'])
+            hole_az = float(s2['azimuth'])
+        else:
+            for i in range(1, len(surveys_data)):
+                prev_s = surveys_data[i - 1]
+                curr_s = surveys_data[i]
+                if float(prev_s['depth']) <= mid_depth <= float(curr_s['depth']):
+                    d1 = float(prev_s['depth'])
+                    d2 = float(curr_s['depth'])
+                    t = (mid_depth - d1) / (d2 - d1) if abs(d2 - d1) > 1e-9 else 0.0
+                    hole_dip = float(prev_s['dip']) + t * (float(curr_s['dip']) - float(prev_s['dip']))
+                    a1 = math.radians(float(prev_s['azimuth']))
+                    a2 = math.radians(float(curr_s['azimuth']))
+                    x = (1 - t) * math.cos(a1) + t * math.cos(a2)
+                    y = (1 - t) * math.sin(a1) + t * math.sin(a2)
+                    hole_az = (math.degrees(math.atan2(y, x)) + 360.0) % 360.0
+                    break
+
+    hd_rad = math.radians(hole_dip)
+    ha_rad = math.radians(hole_az)
+    dx = math.cos(hd_rad) * math.sin(ha_rad)
+    dy = math.cos(hd_rad) * math.cos(ha_rad)
+    dz = math.sin(hd_rad)
+
+    alpha = math.radians(dip_direction)
+    delta = math.radians(dip)
+    nx = math.sin(delta) * math.sin(alpha)
+    ny = math.sin(delta) * math.cos(alpha)
+    nz = -math.cos(delta)
+
+    cos_theta = dx * nx + dy * ny + dz * nz
+    true_thickness = apparent_thickness * abs(cos_theta)
+
+    return {
+        "collar_id": collar_id,
+        "interval_id": interval_id,
+        "apparent_thickness": apparent_thickness,
+        "true_thickness": true_thickness,
+        "hole_dip": hole_dip,
+        "hole_azimuth": hole_az,
+        "vein_dip_direction": dip_direction,
+        "vein_dip": dip,
+        "intersection_angle_deg": math.degrees(math.acos(min(1.0, max(-1.0, abs(cos_theta)))))
+    }
 
 def _enforce_collar_ownership(collar: Collar, db: Session, current_user) -> None:
     """No-op when current_user is None (the Share Link viewer reuse path in
@@ -171,80 +237,21 @@ def get_true_thickness(
         
     from_depth = float(interval.from_depth)
     to_depth = float(interval.to_depth)
-    apparent_thickness = to_depth - from_depth
-    mid_depth = (from_depth + to_depth) / 2.0
-    
+
     # Fetch surveys to interpolate orientation
     surveys = db.query(Survey).filter(Survey.collar_id == collar.id).order_by(Survey.depth).all()
-    
-    # Defaults if no surveys
-    hole_dip = -90.0
-    hole_az = 0.0
-    
-    if len(surveys) == 1:
-        hole_dip = float(surveys[0].dip)
-        hole_az = float(surveys[0].azimuth)
-    elif len(surveys) > 1:
-        # Interpolate
-        s1 = surveys[0]
-        s2 = surveys[-1]
-        
-        if mid_depth <= s1.depth:
-            hole_dip = float(s1.dip)
-            hole_az = float(s1.azimuth)
-        elif mid_depth >= s2.depth:
-            hole_dip = float(s2.dip)
-            hole_az = float(s2.azimuth)
-        else:
-            # Find bounding surveys
-            for i in range(1, len(surveys)):
-                prev_s = surveys[i-1]
-                curr_s = surveys[i]
-                if prev_s.depth <= mid_depth <= curr_s.depth:
-                    d1, d2 = float(prev_s.depth), float(curr_s.depth)
-                    t = (mid_depth - d1) / (d2 - d1) if abs(d2 - d1) > 1e-9 else 0.0
-                    
-                    # Interpolate Dip
-                    hole_dip = float(prev_s.dip) + t * (float(curr_s.dip) - float(prev_s.dip))
-                    
-                    # Interpolate Azimuth on unit circle
-                    a1 = math.radians(float(prev_s.azimuth))
-                    a2 = math.radians(float(curr_s.azimuth))
-                    x = (1 - t) * math.cos(a1) + t * math.cos(a2)
-                    y = (1 - t) * math.sin(a1) + t * math.sin(a2)
-                    hole_az = math.degrees(math.atan2(y, x)) % 360.0
-                    break
-                    
-    # Compute true thickness
-    hd_rad = math.radians(hole_dip)
-    ha_rad = math.radians(hole_az)
-    
-    dx = math.cos(hd_rad) * math.sin(ha_rad)
-    dy = math.cos(hd_rad) * math.cos(ha_rad)
-    dz = math.sin(hd_rad)
-    
-    # Convert vein dip direction and dip to normal vector
-    alpha = math.radians(dip_direction)
-    delta = math.radians(dip)
-    
-    # Normal vector of vein plane:
-    nx = math.sin(delta) * math.sin(alpha)
-    ny = math.sin(delta) * math.cos(alpha)
-    nz = -math.cos(delta)
-    
-    # Dot product
-    cos_theta = dx * nx + dy * ny + dz * nz
-    true_thickness = apparent_thickness * abs(cos_theta)
-    
-    return {
-        "collar_id": collar_id,
-        "interval_id": interval_id,
-        "apparent_thickness": apparent_thickness,
-        "true_thickness": true_thickness,
-        "hole_dip": hole_dip,
-        "hole_azimuth": hole_az,
-        "vein_dip_direction": dip_direction,
-        "vein_dip": dip,
-        "intersection_angle_deg": math.degrees(math.acos(min(1.0, max(-1.0, abs(cos_theta)))))
-    }
+    surveys_data = [
+        {'depth': float(s.depth), 'dip': float(s.dip), 'azimuth': float(s.azimuth)}
+        for s in surveys
+    ]
+
+    return _compute_true_thickness_math(
+        from_depth=from_depth,
+        to_depth=to_depth,
+        surveys_data=surveys_data,
+        dip_direction=dip_direction,
+        dip=dip,
+        collar_id=collar_id,
+        interval_id=interval_id,
+    )
 

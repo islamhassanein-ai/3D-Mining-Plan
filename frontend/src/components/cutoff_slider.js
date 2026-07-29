@@ -48,7 +48,11 @@ export class CutoffSlider {
       .cutoff-input-row {
         display: flex;
         align-items: center;
-        gap: 10px;
+        gap: 8px;
+        flex-wrap: nowrap;
+        width: 100%;
+        box-sizing: border-box;
+        overflow: hidden;
       }
       .cutoff-input-row input[type="range"] {
         flex: 1;
@@ -72,6 +76,24 @@ export class CutoffSlider {
       .cutoff-input-row input[type="range"]::-webkit-slider-thumb:hover {
         transform: scale(1.2);
       }
+      .cutoff-number-input {
+        width: 60px;
+        min-width: 0;
+        flex-shrink: 0;
+        box-sizing: border-box;
+        padding: 2px 6px;
+        text-align: center;
+        font-size: 12px;
+        border-radius: 4px;
+        border: 1px solid #444;
+        background: #222;
+        color: #fff;
+        outline: none;
+        -moz-appearance: textfield;
+      }
+      .cutoff-number-input::-webkit-outer-spin-button,
+      .cutoff-number-input::-webkit-inner-spin-button { -webkit-appearance: none; }
+      .cutoff-number-input:focus { border-color: #d4af37; }
       .cutoff-limits {
         display: flex;
         justify-content: space-between;
@@ -91,6 +113,8 @@ export class CutoffSlider {
         </div>
         <div class="cutoff-input-row">
           <input type="range" id="cutoff-range" min="${this.min}" max="${this.max}" step="${this.step}" value="${this.value}">
+          <input type="number" id="cutoff-number" class="cutoff-number-input"
+                 min="${this.min}" max="${this.max}" step="${this.step}" value="${this.value.toFixed(2)}">
         </div>
         <div class="cutoff-limits">
           <span>0.00 ppm</span>
@@ -103,23 +127,38 @@ export class CutoffSlider {
   }
 
   bindEvents() {
-    const rangeInput = this.container.querySelector('#cutoff-range');
-    const display = this.container.querySelector('#cutoff-display');
+    const rangeInput  = this.container.querySelector('#cutoff-range');
+    const numberInput = this.container.querySelector('#cutoff-number');
+    const display     = this.container.querySelector('#cutoff-display');
 
-    rangeInput.addEventListener('input', (e) => {
-      this.value = Number(e.target.value);
-      display.textContent = `${this.value.toFixed(2)} ppm`;
-      if (this.onChange) {
-        this.onChange(this.value);
-      }
+    const apply = (val) => {
+      this.value = Math.max(this.min, Math.min(this.max, Number(val)));
+      rangeInput.value  = this.value;
+      numberInput.value = this.value.toFixed(2);
+      if (display) display.textContent = `${this.value.toFixed(2)} ppm`;
+      if (this.onChange) this.onChange(this.value);
+    };
+
+    rangeInput.addEventListener('input',  (e) => apply(e.target.value));
+
+    // Commit on blur (so partial typing like "0." doesn't fire mid-entry)
+    numberInput.addEventListener('change', (e) => {
+      const v = parseFloat(e.target.value);
+      if (!isNaN(v)) apply(v);
+    });
+    // Also fire on Enter key for quick workflow
+    numberInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); numberInput.blur(); }
     });
   }
 
   setValue(val) {
-    this.value = Number(val);
-    const rangeInput = this.container.querySelector('#cutoff-range');
-    const display = this.container.querySelector('#cutoff-display');
-    if (rangeInput) rangeInput.value = this.value;
-    if (display) display.textContent = `${this.value.toFixed(2)} ppm`;
+    this.value = Math.max(this.min, Math.min(this.max, Number(val)));
+    const rangeInput  = this.container.querySelector('#cutoff-range');
+    const numberInput = this.container.querySelector('#cutoff-number');
+    const display     = this.container.querySelector('#cutoff-display');
+    if (rangeInput)  rangeInput.value  = this.value;
+    if (numberInput) numberInput.value = this.value.toFixed(2);
+    if (display)     display.textContent = `${this.value.toFixed(2)} ppm`;
   }
 }
