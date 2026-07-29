@@ -330,6 +330,41 @@ async function initStaticViewer() {
       }
     }
 
+    // 26. Draggable modal support
+    function makeDraggable(card) {
+      const header = card.querySelector('.modal-header');
+      if (!header) return;
+      let dragging = false, ox = 0, oy = 0;
+      header.addEventListener('mousedown', (e) => {
+        if (e.target.closest('.modal-close')) return;
+        const rect = card.getBoundingClientRect();
+        card.style.position = 'fixed';
+        card.style.margin   = '0';
+        card.style.left     = rect.left + 'px';
+        card.style.top      = rect.top  + 'px';
+        ox = e.clientX - rect.left;
+        oy = e.clientY - rect.top;
+        dragging = true;
+        e.preventDefault();
+      });
+      window.addEventListener('mousemove', (e) => {
+        if (!dragging) return;
+        card.style.left = Math.max(0, Math.min(window.innerWidth  - card.offsetWidth,  e.clientX - ox)) + 'px';
+        card.style.top  = Math.max(0, Math.min(window.innerHeight - card.offsetHeight, e.clientY - oy)) + 'px';
+      });
+      window.addEventListener('mouseup', () => { dragging = false; });
+    }
+    const modalContainer = document.getElementById('modal-container');
+    if (modalContainer) {
+      new MutationObserver(() => {
+        const card = modalContainer.querySelector('.modal-card');
+        if (card && !card.dataset.draggable) {
+          card.dataset.draggable = '1';
+          makeDraggable(card);
+        }
+      }).observe(modalContainer, { childList: true, subtree: true });
+    }
+
   } catch (err) {
     console.error('Static viewer initialization failed:', err);
     if (loadingOverlay) loadingOverlay.style.display = 'none';
