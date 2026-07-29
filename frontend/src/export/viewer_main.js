@@ -34,7 +34,7 @@ import { StaticDataSource } from '../services/static_data_source.js';
 // shell.html uses inline onclick="hideShortcutHelp()" so these must live on window.
 window.showShortcutHelp = function () {
   const el = document.getElementById('shortcut-help-overlay');
-  if (el) el.style.display = 'flex';
+  if (el) el.style.display = 'block';
 };
 window.hideShortcutHelp = function () {
   const el = document.getElementById('shortcut-help-overlay');
@@ -342,6 +342,8 @@ async function initStaticViewer() {
         const rect = card.getBoundingClientRect();
         card.style.position = 'fixed';
         card.style.margin   = '0';
+        card.style.right    = '';
+        card.style.bottom   = '';
         card.style.left     = rect.left + 'px';
         card.style.top      = rect.top  + 'px';
         ox = e.clientX - rect.left;
