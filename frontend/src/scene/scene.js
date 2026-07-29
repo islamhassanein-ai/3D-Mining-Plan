@@ -31,6 +31,8 @@ import { StructuralPanel } from '../components/structural_panel.js';
 import { QaqcPanel } from '../components/qaqc_panel.js';
 import { LayerTogglePanel } from '../components/layer_toggles.js';
 import { ApiClient } from '../services/api_client.js';
+import { computeProjectSummary } from '../services/project_summary.js';
+import { ApiDataSource, ShareTokenDataSource } from '../services/data_source.js';
 
 let scene = null;
 let camera = null;
@@ -237,3 +239,6 @@ window.QaqcPanel = QaqcPanel;
 window.LayerTogglePanel = LayerTogglePanel;
 window.ApiClient = ApiClient;
 window.ExportPanel = ExportPanel;
+window.computeProjectSummary = computeProjectSummary;
+window.ApiDataSource = ApiDataSource;
+window.ShareTokenDataSource = ShareTokenDataSource;

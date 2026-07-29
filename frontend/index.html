@@ -1046,6 +1046,7 @@
         
         // Setup Inspector
         const inspector = new window.InspectorPanel('inspector-container', {
+          dataSource: new window.ApiDataSource(projectId),
           onIntervalSelected: (intervalId) => {
             if (viewport3D && viewport3D.assaysRenderer) {
               viewport3D.assaysRenderer.highlightInterval(intervalId);
@@ -1250,40 +1251,17 @@
     }
 
     function updateDdAndTrenchSummary(data) {
-      // DD (drillhole) summary: total meters drilled is taken from each
-      // hole's deepest assay interval, not the raw trace length, so it
-      // reflects sampled/logged depth rather than the full drilled hole.
-      const drillholes = data.drillholes || [];
-      let totalMeters = 0, ddGradeSum = 0, ddGradeCount = 0, ddPeak = 0;
-      for (const dh of drillholes) {
-        let maxDepth = 0;
-        for (const a of dh.assays) {
-          if (a.to_depth > maxDepth) maxDepth = a.to_depth;
-          ddGradeSum += a.grade_value;
-          ddGradeCount++;
-          if (a.grade_value > ddPeak) ddPeak = a.grade_value;
-        }
-        totalMeters += maxDepth;
-      }
-      document.getElementById('dd-sum-holes').textContent = drillholes.length;
-      document.getElementById('dd-sum-meters').textContent = `${totalMeters.toFixed(0)}m`;
-      document.getElementById('dd-sum-avg').textContent = ddGradeCount ? (ddGradeSum / ddGradeCount).toFixed(2) : '0';
-      document.getElementById('dd-sum-peak').textContent = ddPeak.toFixed(1);
+      const { drillholes: dd, trenches: tr } = window.computeProjectSummary(data);
 
-      // Trenches summary
-      const trenches = data.trenches || [];
-      const trenchIds = new Set(trenches.map(t => t.trench_id));
-      let trGradeSum = 0, trGradeCount = 0, trPeak = 0;
-      for (const t of trenches) {
-        if (t.grade_value == null) continue;
-        trGradeSum += t.grade_value;
-        trGradeCount++;
-        if (t.grade_value > trPeak) trPeak = t.grade_value;
-      }
-      document.getElementById('tr-sum-count').textContent = trenchIds.size;
-      document.getElementById('tr-sum-samples').textContent = trenches.length;
-      document.getElementById('tr-sum-avg').textContent = trGradeCount ? (trGradeSum / trGradeCount).toFixed(2) : '0';
-      document.getElementById('tr-sum-peak').textContent = trPeak.toFixed(1);
+      document.getElementById('dd-sum-holes').textContent = dd.holes;
+      document.getElementById('dd-sum-meters').textContent = `${dd.meters.toFixed(0)}m`;
+      document.getElementById('dd-sum-avg').textContent = dd.sampleCount ? dd.avgGrade.toFixed(2) : '0';
+      document.getElementById('dd-sum-peak').textContent = dd.peakGrade.toFixed(1);
+
+      document.getElementById('tr-sum-count').textContent = tr.count;
+      document.getElementById('tr-sum-samples').textContent = tr.samples;
+      document.getElementById('tr-sum-avg').textContent = tr.sampleCount ? tr.avgGrade.toFixed(2) : '0';
+      document.getElementById('tr-sum-peak').textContent = tr.peakGrade.toFixed(1);
     }
 
     function unloadActiveProject() {
@@ -1403,7 +1381,7 @@
       try {
         // Setup shared Inspector Panel
         const inspector = new window.InspectorPanel('inspector-container', {
-          shareToken: token,
+          dataSource: new window.ShareTokenDataSource(token),
           onIntervalSelected: (intervalId) => {
             if (viewport3D && viewport3D.assaysRenderer) {
               viewport3D.assaysRenderer.highlightInterval(intervalId);

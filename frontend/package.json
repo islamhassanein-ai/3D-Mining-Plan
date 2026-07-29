@@ -4,7 +4,8 @@
   "description": "Gold Prospect 3D Visualization Tool Frontend",
   "scripts": {
     "dev": "esbuild src/scene/scene.js --bundle --outfile=dist/bundle.js --serve=8001 --servedir=. --watch",
-    "build": "esbuild src/scene/scene.js --bundle --minify --outfile=dist/bundle.js"
+    "build": "esbuild src/scene/scene.js --bundle --minify --outfile=dist/bundle.js",
+    "test": "node --test tests/"
   },
   "dependencies": {
     "delaunator": "^5.1.0",

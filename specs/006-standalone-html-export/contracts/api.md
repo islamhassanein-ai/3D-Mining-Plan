@@ -247,8 +247,17 @@ user-facing text assigned at runtime from the payload via `textContent`.
 
 ## 4. Frontend Interface — `SceneDataSource`
 
-`frontend/src/services/data_source.js`. All methods are `async` regardless of
-implementation, so callers never branch on which source they hold.
+`ApiDataSource` and `ShareTokenDataSource` live in
+`frontend/src/services/data_source.js`.
+`StaticDataSource` lives in `frontend/src/services/static_data_source.js` and
+imports **only** `./true_thickness.js` — this isolation ensures that
+`viewer_main.js` (Phase 3, T017) can import `StaticDataSource` without pulling
+`api_client.js`, `window.location`, or any API base URL literal into the export
+bundle (required by T022/T023). Do **not** re-export `StaticDataSource` from
+`data_source.js`.
+
+All methods are `async` regardless of implementation, so callers never branch on
+which source they hold.
 
 ```js
 /**

@@ -128,7 +128,12 @@ DOM writes but takes its numbers from `computeProjectSummary`. Same rendered val
 ### T005 — Introduce the `SceneDataSource` seam
 
 **Create** `frontend/src/services/data_source.js` per `contracts/api.md` §4 and
-`plan.md` ADR-002. Export `ApiDataSource`, `ShareTokenDataSource`, `StaticDataSource`.
+`plan.md` ADR-002. Export `ApiDataSource`, `ShareTokenDataSource`.
+
+**Create** `frontend/src/services/static_data_source.js`. Export `StaticDataSource`.
+This file imports **only** `./true_thickness.js` — no `api_client.js`, no
+`window.location`, no API base URL. This isolation is required for T022/T023: the
+export viewer bundle must not ship any live-app credentials or API metadata.
 
 - `ApiDataSource(projectId)` / `ShareTokenDataSource(token)` wrap the existing
   `ApiClient` methods — no new fetch logic; move the `/uploads/` fetches from
@@ -137,8 +142,7 @@ DOM writes but takes its numbers from `computeProjectSummary`. Same rendered val
   `payload.topography.points` (expanding `[e,n,el]` → `{e,n,el}`) and delegates
   `getTrueThickness` to `true_thickness.js` using the collar's embedded `surveys`.
   Throw a descriptive `Error` on an unknown `collarId`.
-- `StaticDataSource` **must not import** `api_client.js`, directly or transitively —
-  T023 enforces this against the built bundle.
+- Do **not** re-export `StaticDataSource` from `data_source.js`.
 
 Export `isStatic` on each (`false`, `false`, `true`).
 
@@ -396,6 +400,10 @@ Sequence:
 registrations — so `viewer_main.js` must import the specific modules it needs
 (`init3DViewport` and each component) **directly from their own files**, not rely on
 `window.*` globals. Getting this wrong pulls `ApiClient` into the bundle and fails T023.
+
+Import `StaticDataSource` from `services/static_data_source.js`, **never** from
+`data_source.js` — the latter imports `ApiClient` and would reintroduce the bundle
+pollution T023 is designed to catch.
 
 ---
 

@@ -25,6 +25,30 @@ function elevationColor(t) {
   return new THREE.Color(stops[stops.length - 1][1]);
 }
 
+// Exported so ApiDataSource and the Python-side service share identical parsing rules.
+export function parseTopographyCSV(csvText) {
+  const lines = csvText.split('\n');
+  if (lines.length < 2) return [];
+  const headers = lines[0].trim().toLowerCase().split(',');
+  const eIdx = headers.findIndex(h => h.includes('east'));
+  const nIdx = headers.findIndex(h => h.includes('north'));
+  const elIdx = headers.findIndex(h => h.includes('elev') || h === 'z' || h.includes('alt'));
+  if (eIdx === -1 || nIdx === -1 || elIdx === -1) return [];
+  const points = [];
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    const cols = line.split(',');
+    const e = parseFloat(cols[eIdx]);
+    const n = parseFloat(cols[nIdx]);
+    const el = parseFloat(cols[elIdx]);
+    if (!isNaN(e) && !isNaN(n) && !isNaN(el)) {
+      points.push({ e, n, el });
+    }
+  }
+  return points;
+}
+
 export class TopographyRenderer {
   constructor(scene) {
     this.scene = scene;
@@ -54,38 +78,8 @@ export class TopographyRenderer {
     }
   }
 
-  renderCSVPoints(csvText) {
-    const lines = csvText.split('\n');
-    if (lines.length < 2) return;
-
-    // Parse headers
-    const headers = lines[0].trim().toLowerCase().split(',');
-    const eIdx = headers.findIndex(h => h.includes('east'));
-    const nIdx = headers.findIndex(h => h.includes('north'));
-    const elIdx = headers.findIndex(h => h.includes('elev') || h.includes('z') || h.includes('alt'));
-
-    if (eIdx === -1 || nIdx === -1 || elIdx === -1) {
-      console.warn('Topography CSV headers must contain Easting, Northing, and Elevation');
-      return;
-    }
-
-    const points = [];
-    for (let i = 1; i < lines.length; i++) {
-      const line = lines[i].trim();
-      if (!line) continue;
-
-      const cols = line.split(',');
-      const e = parseFloat(cols[eIdx]);
-      const n = parseFloat(cols[nIdx]);
-      const el = parseFloat(cols[elIdx]);
-
-      if (!isNaN(e) && !isNaN(n) && !isNaN(el)) {
-        points.push({ e, n, el });
-      }
-    }
-
-    if (points.length === 0) return;
-
+  renderPoints(points) {
+    if (!points || points.length === 0) return;
     this._buildPointCloud(points);
     if (points.length >= 3) this._buildTriangulatedMesh(points);
     this._applyDisplayMode();
@@ -96,6 +90,15 @@ export class TopographyRenderer {
     );
     const helper = new THREE.Box3Helper(box, 0x1e3a8a);
     this.group.add(helper);
+  }
+
+  renderCSVPoints(csvText) {
+    const points = parseTopographyCSV(csvText);
+    if (!points.length) {
+      console.warn('Topography CSV headers must contain Easting, Northing, and Elevation');
+      return;
+    }
+    this.renderPoints(points);
   }
 
   _buildPointCloud(points) {
