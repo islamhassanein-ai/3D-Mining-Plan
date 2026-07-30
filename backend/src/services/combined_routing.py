@@ -1,26 +1,32 @@
 """Routing for the combined Master Reference CSV.
 
-Splits the parsed rows from ``parse_combined_csv`` into the three storage
-buckets the rest of the import pipeline consumes:
+Splits the parsed rows from ``parse_combined_csv`` into four storage buckets:
 
-* ``collars``       -- one per DD/RC row, carrying ``hole_type``.
-* ``surveys``       -- one per DD/RC row that has an inline survey, at
+* ``collars``       -- one per DD/RC collar row, carrying ``hole_type``.
+* ``surveys``       -- one per DD/RC collar row that has an inline survey, at
   ``depth == total_length`` (NOT 0). ``compute_minimum_curvature_trace`` at
   ``backend/src/services/desurvey.py:79`` auto-prepends a virtual station at
   depth 0 with the same orientation, producing a correct two-station trace; a
   single station at depth 0 would yield a one-point trace and an invisible hole.
-* ``trench_points`` -- two horizontal points per TR/CH/FC row (``dz = 0``).
+* ``trench_points`` -- one per TR/CH/FC sample row, connected in CSV order.
+  Multi-row trenches: each row's X/Y/Z becomes a polyline vertex.
+  Single-row trenches: a computed far-end point (from inline_survey or
+  end_coords) is appended so the polyline always has >= 2 points.
+* ``assays``        -- one per DD/RC sample continuation row (blank X/Y/Z),
+  carrying depth intervals to be committed as AssayInterval records.
 
 CRITICAL geological constraint: Dip/Azimuth on TR/CH/FC is the local ground
 slope AT THE START POINT ONLY, not the trench trajectory. We do NOT call
 ``compute_minimum_curvature_trace`` for trenches -- it would apply dip along the
 full length and put ARTR001 (dip +16, length 145) ~40 m in the air. Generated
-trench points stay flat at collar elevation; true per-point Z arrives later
-from the sampling sheet.
+trench endpoint (for single-row mode) stays flat at collar elevation (dz = 0).
 """
+import logging
 import math
 import uuid
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
+
+_log = logging.getLogger(__name__)
 
 # Hole types that store as Collar (+ optional inline Survey).
 _COLLAR_TYPES = {"DD", "RC"}
@@ -28,119 +34,209 @@ _COLLAR_TYPES = {"DD", "RC"}
 _TRENCH_TYPES = {"TR", "CH", "FC"}
 
 
-def route_combined_rows(rows: List[Dict]) -> Dict[str, List[Dict]]:
-    """Route parsed combined-CSV rows into collars, surveys, and trench points.
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
 
-    Returns ``{"collars": [...], "surveys": [...], "trench_points": [...]}``.
+def _route_single_row_trench(r: Dict) -> List[Dict]:
+    """Two-point horizontal polyline from a single TR/CH/FC row.
 
-    Each collar dict carries ``hole_type`` and ``zone`` (the caller resolves
-    those to projects later). Each trench point carries ``trench_id``,
-    ``point_order`` (0 = anchor/start, 1 = far end), ``hole_type``, ``zone``,
-    and ``dip``/``azimuth`` on the point_order=0 row only (start-point slope
-    metadata). ``grade_value`` is always ``None`` -- the combined CSV carries
-    no grade column.
+    Start = row X/Y/Z.  End = computed from inline_survey (azimuth + length,
+    dz = 0) or from ``end_coords`` if provided.  Falls back to a degenerate
+    zero-length segment when neither is available.
     """
-    collars: List[Dict] = []
-    surveys: List[Dict] = []
-    trench_points: List[Dict] = []
+    hole_id   = r["hole_id"]
+    hole_type = r["hole_type"]
+    zone      = r.get("zone")
+    csv_row   = r.get("csv_row")
+    x, y, z   = r["easting"], r["northing"], r["elevation"]
+    inline    = r.get("inline_survey")
+    end_coords = r.get("end_coords")
+
+    # Anchor point — dip/azimuth stored at point_order=0 only (start-slope metadata).
+    dip0     = inline["dip"]      if inline else None
+    azimuth0 = inline["azimuth"]  if inline else None
+
+    if inline is not None:
+        L      = inline["total_length"]
+        az_rad = math.radians(inline["azimuth"])
+        far_e  = x + L * math.sin(az_rad)
+        far_n  = y + L * math.cos(az_rad)
+        far_z  = z  # dz = 0
+    elif end_coords is not None:
+        far_e = end_coords["easting"]
+        far_n = end_coords["northing"]
+        far_z = end_coords["elevation"]
+    else:
+        _log.warning("Trench %s has no inline survey or end coords — polyline degenerates to a dot", hole_id)
+        far_e, far_n, far_z = x, y, z
+
+    return [
+        {
+            "trench_id":   hole_id,
+            "easting":     x,
+            "northing":    y,
+            "elevation":   z,
+            "point_order": 0,
+            "hole_type":   hole_type,
+            "zone":        zone,
+            "dip":         dip0,
+            "azimuth":     azimuth0,
+            "grade_value": r.get("grade_value"),
+            "sample_id":   r.get("sample_id"),
+            "from_depth":  r.get("from_depth"),
+            "to_depth":    r.get("to_depth"),
+            "csv_row":     csv_row,
+        },
+        {
+            "trench_id":   hole_id,
+            "easting":     far_e,
+            "northing":    far_n,
+            "elevation":   far_z,
+            "point_order": 1,
+            "hole_type":   hole_type,
+            "zone":        zone,
+            "dip":         None,
+            "azimuth":     None,
+            "grade_value": None,
+            "sample_id":   None,
+            "from_depth":  None,
+            "to_depth":    None,
+            "csv_row":     csv_row,
+        },
+    ]
+
+
+def _route_multi_row_trench(rows: List[Dict]) -> List[Dict]:
+    """N-point polyline from multiple TR/CH/FC rows with the same hole_id.
+
+    Each row contributes one vertex at its own X/Y/Z.  dip/azimuth from the
+    first row's inline_survey go onto point_order=0 only; subsequent points
+    get dip=None/azimuth=None.
+    """
+    points = []
+    first_inline = rows[0].get("inline_survey")
+    for order, r in enumerate(rows):
+        points.append({
+            "trench_id":   r["hole_id"],
+            "easting":     r["easting"],
+            "northing":    r["northing"],
+            "elevation":   r["elevation"],
+            "point_order": order,
+            "hole_type":   r["hole_type"],
+            "zone":        r.get("zone"),
+            "dip":         first_inline["dip"]     if order == 0 and first_inline else None,
+            "azimuth":     first_inline["azimuth"] if order == 0 and first_inline else None,
+            "grade_value": r.get("grade_value"),
+            "sample_id":   r.get("sample_id"),
+            "from_depth":  r.get("from_depth"),
+            "to_depth":    r.get("to_depth"),
+            "csv_row":     r.get("csv_row"),
+        })
+    return points
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
+def route_combined_rows(rows: List[Dict]) -> Dict[str, List[Dict]]:
+    """Route parsed combined-CSV rows into collars, surveys, trench_points, assays.
+
+    Accepts rows produced by ``parse_combined_csv`` (which include a
+    ``"row_kind"`` field) **and** plain dicts without ``"row_kind"`` (legacy
+    test fixtures); in the latter case the kind is inferred from ``hole_type``.
+
+    Returns::
+
+        {
+            "collars":       [...],
+            "surveys":       [...],
+            "trench_points": [...],   # one per polyline vertex, ordered
+            "assays":        [...],   # DD/RC sample continuation rows
+        }
+    """
+    collars: List[Dict]        = []
+    surveys: List[Dict]        = []
+    trench_rows: Dict[str, List[Dict]] = {}  # hole_id -> ordered list of trench rows
+    trench_order: List[str]    = []           # preserves first-seen insertion order
+    assays: List[Dict]         = []
 
     for r in rows:
         hole_type = r["hole_type"]
-        hole_id = r["hole_id"]
-        zone = r.get("zone")
-        inline = r.get("inline_survey")
+        hole_id   = r["hole_id"]
+        zone      = r.get("zone")
+        inline    = r.get("inline_survey")
+        csv_row   = r.get("csv_row")
 
-        csv_row = r.get("csv_row")
+        # Infer row_kind when caller omits it (legacy test fixtures).
+        row_kind = r.get("row_kind")
+        if row_kind is None:
+            row_kind = "trench" if hole_type in _TRENCH_TYPES else "collar"
 
-        if hole_type in _COLLAR_TYPES:
-            collar = {
-                "hole_id": hole_id,
-                "easting": r["easting"],
-                "northing": r["northing"],
+        if row_kind == "collar":
+            collars.append({
+                "hole_id":   hole_id,
+                "easting":   r["easting"],
+                "northing":  r["northing"],
                 "elevation": r["elevation"],
-                "utm_zone": None,  # resolved per-project at commit
+                "utm_zone":  None,   # resolved per-project at commit
                 "hole_type": hole_type,
-                "zone": zone,
-                "csv_row": csv_row,
-            }
-            collars.append(collar)
-
+                "zone":      zone,
+                "csv_row":   csv_row,
+            })
             if inline is not None:
-                # One station at depth == total_length. The desurvey routine
-                # auto-prepends a virtual depth=0 station with the same dip/
-                # azimuth, producing a 2-point trace. A station at depth 0
-                # alone yields a one-point trace and an invisible drillhole.
+                # One station at depth == total_length; desurvey prepends depth=0.
                 surveys.append({
                     "hole_id": hole_id,
-                    "depth": inline["total_length"],
-                    "dip": inline["dip"],
+                    "depth":   inline["total_length"],
+                    "dip":     inline["dip"],
                     "azimuth": inline["azimuth"],
                 })
+            # When the collar row itself carries sample data (Sample_ID + From/To),
+            # emit an assay so interval S01 is not silently dropped.
+            if r.get("sample_id") and r.get("from_depth") is not None and r.get("to_depth") is not None:
+                assays.append({
+                    "hole_id":     hole_id,
+                    "sample_id":   r.get("sample_id"),
+                    "from_depth":  r.get("from_depth"),
+                    "to_depth":    r.get("to_depth"),
+                    "grade_value": r.get("grade_value"),
+                    "grade_unit":  r.get("grade_unit", "g/t"),
+                    "csv_row":     csv_row,
+                })
 
-        elif hole_type in _TRENCH_TYPES:
-            # Two-point, HORIZONTAL polyline. dz = 0 -- the trench follows
-            # undulating terrain but with only a start coordinate we cannot
-            # extrapolate Z; dip/azimuth are stored as start-point metadata
-            # only. sin/cos assignment matches get_direction_cosine at
-            # desurvey.py:102-105 (azimuth clockwise from North -> easting
-            # takes sin, northing takes cos).
-            x, y, z = r["easting"], r["northing"], r["elevation"]
-            if inline is not None:
-                L = inline["total_length"]
-                az_rad = math.radians(inline["azimuth"])
-                far_e = x + L * math.sin(az_rad)
-                far_n = y + L * math.cos(az_rad)
-                # far z == z (dz = 0)
-                dip = inline["dip"]
-                azimuth = inline["azimuth"]
-            else:
-                # A TR/CH/FC row with no inline survey: degenerate to a single
-                # point duplicated so the polyline still has a 2-point shape
-                # (zero length). Logged as a warning so the user knows the
-                # trench will render as a dot in the 3D scene.
-                import logging
-                logging.getLogger(__name__).warning(
-                    "Trench %s has no inline survey — polyline degenerates to a dot", hole_id
-                )
-                far_e, far_n = x, y
-                dip = None
-                azimuth = None
-
-            trench_points.append({
-                "trench_id": hole_id,
-                "easting": x,
-                "northing": y,
-                "elevation": z,
-                "point_order": 0,
-                "hole_type": hole_type,
-                "zone": zone,
-                "dip": dip,
-                "azimuth": azimuth,
-                "grade_value": None,
-                "csv_row": csv_row,
-            })
-            trench_points.append({
-                "trench_id": hole_id,
-                "easting": far_e,
-                "northing": far_n,
-                "elevation": z,  # unchanged, dz = 0
-                "point_order": 1,
-                "hole_type": hole_type,
-                "zone": zone,
-                "dip": None,
-                "azimuth": None,
-                "grade_value": None,
-                "csv_row": csv_row,
+        elif row_kind == "assay":
+            assays.append({
+                "hole_id":     hole_id,
+                "sample_id":   r.get("sample_id"),
+                "from_depth":  r.get("from_depth"),
+                "to_depth":    r.get("to_depth"),
+                "grade_value": r.get("grade_value"),
+                "grade_unit":  r.get("grade_unit", "g/t"),
+                "csv_row":     csv_row,
             })
 
-        # Any other hole_type is rejected upstream by parse_combined_csv; if it
-        # somehow reaches here we silently skip rather than crash, so a bad row
-        # never corrupts trench geometry.
+        elif row_kind == "trench":
+            if hole_id not in trench_rows:
+                trench_rows[hole_id] = []
+                trench_order.append(hole_id)
+            trench_rows[hole_id].append(r)
+
+    # Build trench_points preserving hole insertion order, then point order.
+    trench_points: List[Dict] = []
+    for hid in trench_order:
+        group = trench_rows[hid]
+        if len(group) == 1:
+            trench_points.extend(_route_single_row_trench(group[0]))
+        else:
+            trench_points.extend(_route_multi_row_trench(group))
 
     return {
-        "collars": collars,
-        "surveys": surveys,
+        "collars":       collars,
+        "surveys":       surveys,
         "trench_points": trench_points,
+        "assays":        assays,
     }
 
 

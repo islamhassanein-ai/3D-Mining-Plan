@@ -121,7 +121,7 @@ async def create_import(
         collars = routed["collars"]
         surveys = routed["surveys"]
         trench_points = routed["trench_points"]
-        assays = []
+        assays = routed.get("assays", [])
         lithologies = []
 
         # Preview zone resolution -- READ ONLY. No projects are created at
@@ -707,6 +707,9 @@ def _commit_combined(db, project, batch, data, current_user, utm_zone_confirm,
                 import_batch_id=b.id,
                 dip=pt.get("dip"),
                 azimuth=pt.get("azimuth"),
+                sample_id=pt.get("sample_id"),
+                from_depth=pt.get("from_depth"),
+                to_depth=pt.get("to_depth"),
                 # New rows are never themselves superseded at insert time.
                 superseded_by=None,
             ))
@@ -719,6 +722,36 @@ def _commit_combined(db, project, batch, data, current_user, utm_zone_confirm,
             db.query(Trench).filter(Trench.id.in_(old_ids)).update(
                 {Trench.superseded_by: anchor_row_id}, synchronize_session=False
             )
+
+    # Insert AssayInterval rows for DD/RC sample continuation rows from the
+    # combined CSV.  The assay dicts carry hole_id (not collar_id); we resolve
+    # to the new collar_id via per_project_collar_map, then look up the batch
+    # for that project.
+    combined_assays = data.get("assays", [])
+    for a_data in combined_assays:
+        hid = a_data.get("hole_id")
+        collar_id = None
+        batch_for_assay = None
+        for pid, cmap in per_project_collar_map.items():
+            if hid in cmap:
+                collar_id = cmap[hid]
+                batch_for_assay = batches[pid]
+                break
+        if collar_id is None:
+            # No matching collar — skip; the parse/validation already guards this.
+            continue
+        db.add(AssayInterval(
+            id=uuid.uuid4(),
+            collar_id=collar_id,
+            sample_id=a_data.get("sample_id"),
+            from_depth=a_data.get("from_depth") or 0.0,
+            to_depth=a_data.get("to_depth") or 0.0,
+            grade_value=a_data.get("grade_value") or 0.0,
+            grade_unit=a_data.get("grade_unit") or "g/t",
+            below_detection_limit=False,
+            qaqc_flag=None,
+            import_batch_id=batch_for_assay.id,
+        ))
 
     # Set every batch to committed.
     for b in batches.values():

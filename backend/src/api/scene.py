@@ -173,7 +173,10 @@ def get_project_scene(
             "point_order": t.point_order,
             "hole_type": t.hole_type,
             "dip": t.dip,
-            "azimuth": t.azimuth
+            "azimuth": t.azimuth,
+            "sample_id": t.sample_id,
+            "from_depth": t.from_depth,
+            "to_depth": t.to_depth,
         }
         for t in trenches
     ]

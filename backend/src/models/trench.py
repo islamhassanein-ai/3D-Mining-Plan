@@ -33,6 +33,10 @@ class Trench(Base):
     # "Key geological constraint" note in specs/006-combined-csv-import/tasks.md.
     dip = Column(Float, nullable=True)
     azimuth = Column(Float, nullable=True)
+    # Per-sample fields for TR/CH/FC sample rows from the combined CSV.
+    sample_id  = Column(String, nullable=True)
+    from_depth = Column(Float, nullable=True)
+    to_depth   = Column(Float, nullable=True)
 
     # Relationships
     project = relationship("Project", back_populates="trenches")

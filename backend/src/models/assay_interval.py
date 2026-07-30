@@ -9,6 +9,7 @@ class AssayInterval(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     collar_id = Column(UUID(as_uuid=True), ForeignKey("collar.id"), nullable=False, index=True)
+    sample_id  = Column(String, nullable=True)
     from_depth = Column(Float, nullable=False)
     to_depth = Column(Float, nullable=False)
     grade_value = Column(Numeric, nullable=False)
