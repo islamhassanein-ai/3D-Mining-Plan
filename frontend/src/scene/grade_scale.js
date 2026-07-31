@@ -5,14 +5,29 @@
 // bucket: it covers null/NaN grades and placeholder Sample_ID values, which
 // must never be coerced to 0.0 g/t -- "barren" and "never assayed" are
 // different geological statements.
+// Shades are tuned for separation on the dark 3D viewport (#0d1524). What
+// matters is perceptual distance between ADJACENT buckets -- those sit next to
+// each other on a drill trace and must be told apart at a glance. Worst
+// adjacent pair is dE(CIE76) ~56; the previous orange/red boundary was ~35,
+// which read as one colour under scene shading.
+//
+// `from`/`to` are the explicit bracket bounds, so the UI can label ranges
+// rather than bare numbers. `to: null` is the open-ended top bucket.
 export const GRADE_BUCKETS = [
-  { upper: 0.10, color: '#64748b', label: '< 0.10', tag: null },
-  { upper: 0.30, color: '#2563eb', label: '0.10 - 0.30', tag: null },
-  { upper: 0.50, color: '#22c55e', label: '0.30 - 0.50', tag: null },
-  { upper: 1.00, color: '#f97316', label: '0.50 - 1.00', tag: null },
-  { upper: 3.00, color: '#ef4444', label: '1.00 - 3.00', tag: null },
-  { upper: null, color: '#ec4899', label: '>= 3.00', tag: 'High' },
+  { from: 0.00, to: 0.10, upper: 0.10, color: '#9aa7b8', label: '< 0.10', tag: null },
+  { from: 0.10, to: 0.30, upper: 0.30, color: '#2b7fff', label: '0.10 - 0.30', tag: null },
+  { from: 0.30, to: 0.50, upper: 0.50, color: '#21d07a', label: '0.30 - 0.50', tag: null },
+  { from: 0.50, to: 1.00, upper: 1.00, color: '#ffc233', label: '0.50 - 1.00', tag: null },
+  { from: 1.00, to: 3.00, upper: 3.00, color: '#ff5a1f', label: '1.00 - 3.00', tag: null },
+  { from: 3.00, to: null, upper: null, color: '#ff2bd6', label: '>= 3.00', tag: 'High' },
 ];
+
+// "0.10 – 0.30" / "≥ 3.00" -- the From–To form used under the grade bars.
+export function formatBucketRange(bucket, decimals = 2) {
+  const from = bucket.from.toFixed(decimals);
+  if (bucket.to === null) return `≥ ${from}`;
+  return `${from} – ${bucket.to.toFixed(decimals)}`;
+}
 
 // Near-black rather than pure #000000 so unsampled tubes still catch scene
 // lighting and read as geometry instead of a hole in the depth buffer.
@@ -32,9 +47,10 @@ export const UNSAMPLED_SAMPLE_IDS = new Set([
 // grade is communicated by color alone.
 export const DRILL_TUBE_RADIUS = 0.4;
 
-// Radial segment count for interval tubes. 16 is smooth enough to lose the
-// faceted silhouette at inspection zoom while staying cheap for instancing.
-export const DRILL_TUBE_RADIAL_SEGMENTS = 16;
+// Radial segment count for interval tubes. 20 keeps the silhouette round at
+// inspection zoom -- the facet edges were still catching the light at 16 --
+// while staying cheap, since every instance shares this one geometry.
+export const DRILL_TUBE_RADIAL_SEGMENTS = 20;
 
 // Trenches are rendered as a vertical "grade profile fence" standing along
 // the channel-sample line rather than a round tube (round cross-sections

@@ -24,10 +24,10 @@ function aadd004(overrides = {}) {
     ],
     assays: [
       { id: 'a1', sample_id: 'S01', from_depth: 37, to_depth: 38, grade_value: 0.45,
-        grade_unit: 'g/t', unsampled: false, color: '#22c55e',
+        grade_unit: 'g/t', unsampled: false, color: '#21d07a',
         start_pos: [0, 0, -37], end_pos: [0, 0, -38] },
       { id: 'a2', sample_id: 'S02', from_depth: 38, to_depth: 40, grade_value: 1.85,
-        grade_unit: 'g/t', unsampled: false, color: '#ef4444',
+        grade_unit: 'g/t', unsampled: false, color: '#ff5a1f',
         start_pos: [0, 0, -38], end_pos: [0, 0, -40] },
     ],
     lithologies: [],
@@ -97,7 +97,7 @@ test('tube geometry is smooth-shaded with a high radial segment count', () => {
   const r = new AssayIntervals(scene);
   r.render([aadd004()]);
 
-  assert.equal(r.mesh.geometry.parameters.radialSegments, 16);
+  assert.equal(r.mesh.geometry.parameters.radialSegments, 20);
   assert.equal(r.mesh.material.flatShading, false);
 });
 
@@ -131,7 +131,7 @@ test('null-grade and placeholder-sample intervals render no tube', () => {
         grade_unit: 'g/t', unsampled: true, color: UNSAMPLED_COLOR,
         start_pos: [0, 0, -20], end_pos: [0, 0, -30] },
       { id: 'g1', sample_id: 'S02', from_depth: 12, to_depth: 20, grade_value: 0.62,
-        grade_unit: 'g/t', unsampled: false, color: '#f97316',
+        grade_unit: 'g/t', unsampled: false, color: '#ffc233',
         start_pos: [0, 0, -12], end_pos: [0, 0, -20] },
     ],
   })]);
@@ -203,7 +203,7 @@ test('an interval spanning a dogleg renders as multiple chained tubes', () => {
     ],
     assays: [
       { id: 'a1', sample_id: 'S01', from_depth: 40, to_depth: 70, grade_value: 1.2,
-        grade_unit: 'g/t', unsampled: false, color: '#ef4444',
+        grade_unit: 'g/t', unsampled: false, color: '#ff5a1f',
         start_pos: [0, 0, -40], end_pos: [21, 0, -71] },
     ],
   })]);
@@ -212,4 +212,62 @@ test('an interval spanning a dogleg renders as multiple chained tubes', () => {
   // Both sub-segments belong to the same source interval.
   assert.equal(r.intervalsData[0].id, 'a1');
   assert.equal(r.intervalsData[1].id, 'a1');
+});
+
+// ---------------------------------------------------------------------------
+// Mesh shape -- dogleg joints
+// ---------------------------------------------------------------------------
+
+test('sub-segments of one interval overlap so a bend has no notch', () => {
+  const scene = new THREE.Scene();
+  const r = new AssayIntervals(scene);
+  r.render([aadd004({
+    trace: [
+      { depth: 0, x: 0, y: 0, z: 0, dip: -90, azimuth: 90 },
+      { depth: 50, x: 0, y: 0, z: -50, dip: -90, azimuth: 90 },
+      { depth: 100, x: 35, y: 0, z: -85, dip: -45, azimuth: 90 },
+    ],
+    assays: [
+      { id: 'a1', sample_id: 'S01', from_depth: 40, to_depth: 70, grade_value: 1.2,
+        grade_unit: 'g/t', unsampled: false, color: '#ff5a1f',
+        start_pos: [0, 0, -40], end_pos: [21, 0, -71] },
+    ],
+  })]);
+
+  assert.equal(r.mesh.count, 2);
+  // Each sub-segment is longer than its own chord, because the shared interior
+  // joint is grown on both sides.
+  const chordA = r.intervalsData[0].start.distanceTo(r.intervalsData[0].end);
+  const chordB = r.intervalsData[1].start.distanceTo(r.intervalsData[1].end);
+  assert.ok(matrixOf(r.mesh, 0).scale.y > chordA, 'first segment should grow at its inner end');
+  assert.ok(matrixOf(r.mesh, 1).scale.y > chordB, 'second segment should grow at its inner end');
+
+  // Only the interior joint grows -- the interval's own ends stay put.
+  assert.equal(r.intervalsData[0].joinStart, false);
+  assert.equal(r.intervalsData[0].joinEnd, true);
+  assert.equal(r.intervalsData[1].joinStart, true);
+  assert.equal(r.intervalsData[1].joinEnd, false);
+});
+
+test('a single-segment interval is never grown', () => {
+  const scene = new THREE.Scene();
+  const r = new AssayIntervals(scene);
+  r.render([aadd004()]);
+
+  // 37-38 m on a straight trace: one segment, exactly 1 m, no overlap.
+  assert.ok(Math.abs(matrixOf(r.mesh, 0).scale.y - 1.0) < 1e-6);
+  assert.equal(r.intervalsData[0].joinStart, false);
+  assert.equal(r.intervalsData[0].joinEnd, false);
+});
+
+test('grown segments still produce a finite matrix', () => {
+  const scene = new THREE.Scene();
+  const r = new AssayIntervals(scene);
+  r.render([aadd004()]);
+  for (let i = 0; i < r.mesh.count; i++) {
+    const { pos, scale } = matrixOf(r.mesh, i);
+    for (const v of [pos.x, pos.y, pos.z, scale.x, scale.y, scale.z]) {
+      assert.ok(Number.isFinite(v), 'matrix must not contain NaN');
+    }
+  }
 });

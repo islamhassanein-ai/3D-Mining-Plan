@@ -59,3 +59,75 @@ def test_missing_status_column_defaults_to_drilled():
     )
     assert [e for e in errors if e.get("type") != "warning"] == []
     assert route_combined_rows(parsed)["collars"][0]["hole_status"] == "drilled"
+
+
+# ---------------------------------------------------------------------------
+# Four-file import path: collar.csv
+# ---------------------------------------------------------------------------
+
+from backend.src.services.csv_import import parse_collar_csv
+
+
+def _collars(body: str):
+    parsed, errors = parse_collar_csv(body.encode("utf-8"))
+    return parsed, [e for e in errors if e.get("type") != "warning"]
+
+
+def test_collar_csv_status_column_marks_planned_holes():
+    parsed, errors = _collars(
+        "hole_id,easting,northing,elevation,status\n"
+        "MKDD001,208316.22,2467944.22,301.67,drilled\n"
+        "MKPL001,208270.00,2467915.00,300.00,planned\n"
+    )
+    assert errors == []
+    by_id = {c["hole_id"]: c for c in parsed}
+    assert by_id["MKDD001"]["hole_status"] == "drilled"
+    assert by_id["MKPL001"]["hole_status"] == "planned"
+
+
+def test_collar_csv_accepts_hole_status_header_too():
+    parsed, errors = _collars(
+        "hole_id,easting,northing,elevation,hole_status\n"
+        "MKPL001,1,2,3,proposed\n"
+    )
+    assert errors == []
+    assert parsed[0]["hole_status"] == "planned"
+
+
+def test_collar_csv_without_status_column_defaults_to_drilled():
+    """Existing four-file collar.csv files must keep importing unchanged."""
+    parsed, errors = _collars(
+        "hole_id,easting,northing,elevation\n"
+        "MKDD001,208316.22,2467944.22,301.67\n"
+    )
+    assert errors == []
+    assert parsed[0]["hole_status"] == "drilled"
+
+
+def test_collar_csv_rejects_an_unknown_status():
+    parsed, errors = _collars(
+        "hole_id,easting,northing,elevation,status\n"
+        "MKDD001,1,2,3,someday\n"
+    )
+    assert parsed == []
+    assert len(errors) == 1
+    assert "Invalid status" in errors[0]["error"]
+
+
+def test_collar_csv_optional_hole_type():
+    parsed, errors = _collars(
+        "hole_id,easting,northing,elevation,hole_type,status\n"
+        "MKRC001,1,2,3,RC,planned\n"
+    )
+    assert errors == []
+    assert parsed[0]["hole_type"] == "RC"
+    assert parsed[0]["hole_status"] == "planned"
+
+
+def test_collar_csv_rejects_an_unknown_hole_type():
+    parsed, errors = _collars(
+        "hole_id,easting,northing,elevation,hole_type\n"
+        "MKXX001,1,2,3,ZZ\n"
+    )
+    assert parsed == []
+    assert "Invalid hole_type" in errors[0]["error"]

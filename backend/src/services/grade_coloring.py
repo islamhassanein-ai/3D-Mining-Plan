@@ -13,13 +13,21 @@ a "we never assayed this" gap mean very different things to a geologist.
 from typing import Optional
 
 # (upper_bound_exclusive_or_None, hex_color, label)
+#
+# Shades are tuned for separation on the dark 3D viewport (#0d1524). The
+# constraint that matters is perceptual distance between ADJACENT buckets --
+# those are the ones that sit next to each other on a drill trace and have to
+# be told apart at a glance. Worst adjacent pair is dE(CIE76) ~56; the previous
+# orange/red boundary was ~35, which read as one colour under scene shading.
+# Categories and hue order (grey -> blue -> green -> amber -> red -> magenta)
+# are unchanged.
 GRADE_BUCKETS = [
-    (0.10, "#64748b", "< 0.10"),        # Slate grey  -- below background
-    (0.30, "#2563eb", "0.10 - 0.30"),   # Blue
-    (0.50, "#22c55e", "0.30 - 0.50"),   # Bright green
-    (1.00, "#f97316", "0.50 - 1.00"),   # Orange
-    (3.00, "#ef4444", "1.00 - 3.00"),   # Bright red
-    (None, "#ec4899", ">= 3.00"),       # Magenta / pink -- high grade
+    (0.10, "#9aa7b8", "< 0.10"),        # Light neutral grey -- below background
+    (0.30, "#2b7fff", "0.10 - 0.30"),   # Vivid blue
+    (0.50, "#21d07a", "0.30 - 0.50"),   # Spring green
+    (1.00, "#ffc233", "0.50 - 1.00"),   # Amber
+    (3.00, "#ff5a1f", "1.00 - 3.00"),   # Orange-red
+    (None, "#ff2bd6", ">= 3.00"),       # Magenta -- high grade
 ]
 
 # Rendered for intervals with no assay result. Near-black rather than pure

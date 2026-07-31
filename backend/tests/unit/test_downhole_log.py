@@ -169,18 +169,106 @@ def test_zero_grade_is_a_real_result_not_unsampled():
 
 
 @pytest.mark.parametrize("grade,expected", [
-    (0.0,   "#64748b"),  # < 0.10  slate grey
-    (0.09,  "#64748b"),
-    (0.10,  "#2563eb"),  # 0.10 - 0.30  blue
-    (0.29,  "#2563eb"),
-    (0.30,  "#22c55e"),  # 0.30 - 0.50  bright green
-    (0.49,  "#22c55e"),
-    (0.50,  "#f97316"),  # 0.50 - 1.00  orange
-    (0.99,  "#f97316"),
-    (1.00,  "#ef4444"),  # 1.00 - 3.00  bright red
-    (2.99,  "#ef4444"),
-    (3.00,  "#ec4899"),  # >= 3.00  magenta
-    (150.0, "#ec4899"),
+    (0.0,   "#9aa7b8"),  # < 0.10  light grey
+    (0.09,  "#9aa7b8"),
+    (0.10,  "#2b7fff"),  # 0.10 - 0.30  blue
+    (0.29,  "#2b7fff"),
+    (0.30,  "#21d07a"),  # 0.30 - 0.50  spring green
+    (0.49,  "#21d07a"),
+    (0.50,  "#ffc233"),  # 0.50 - 1.00  amber
+    (0.99,  "#ffc233"),
+    (1.00,  "#ff5a1f"),  # 1.00 - 3.00  orange-red
+    (2.99,  "#ff5a1f"),
+    (3.00,  "#ff2bd6"),  # >= 3.00  magenta
+    (150.0, "#ff2bd6"),
 ])
 def test_grade_scale_bracket_boundaries(grade, expected):
     assert get_grade_color(grade, "g/t") == expected
+
+
+# ---------------------------------------------------------------------------
+# Hole length when a collar has no survey rows
+# ---------------------------------------------------------------------------
+
+def test_no_survey_hole_is_sized_to_its_logged_data():
+    """A hole with no surveys used to be drawn 1000 m long.
+
+    The samples were placed at their correct absolute depths, but against a
+    1000 m trace a hole logged to 20 m rendered every sample inside the top 2%
+    of the line -- visually identical to "everything is stuck at the collar".
+    """
+    from backend.src.api.scene import DEFAULT_HOLE_LENGTH_M
+
+    logged_depth = 20.0
+    fallback = logged_depth if logged_depth > 0 else DEFAULT_HOLE_LENGTH_M
+    trace = compute_minimum_curvature_trace(
+        0.0, 0.0, 0.0,
+        [{"depth": 0.0, "dip": -90.0, "azimuth": 0.0},
+         {"depth": fallback, "dip": -90.0, "azimuth": 0.0}],
+    )
+
+    assert trace[-1]["depth"] == 20.0
+
+    # The 8 m sample sits 40% down a 20 m hole, not 0.8% down a 1000 m one.
+    pos = interpolate_trace_position(trace, 8.0)
+    assert pos[2] == pytest.approx(-8.0)
+    assert abs(pos[2]) / trace[-1]["depth"] == pytest.approx(0.4)
+
+
+def test_hole_with_neither_surveys_nor_intervals_still_has_length():
+    """Nothing to size it from -- fall back to a visible stub, not a point."""
+    from backend.src.api.scene import DEFAULT_HOLE_LENGTH_M
+
+    logged_depth = 0.0
+    fallback = logged_depth if logged_depth > 0 else DEFAULT_HOLE_LENGTH_M
+    assert fallback == DEFAULT_HOLE_LENGTH_M
+    assert fallback > 0
+
+
+# ---------------------------------------------------------------------------
+# Adjacent grade colours must be perceptually distinct on the dark viewport
+# ---------------------------------------------------------------------------
+
+def _srgb_to_lab(hex_colour):
+    def pivot_rgb(c):
+        return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+
+    def pivot_xyz(t):
+        return t ** (1.0 / 3.0) if t > 0.008856 else (7.787 * t) + (16.0 / 116.0)
+
+    h = hex_colour.lstrip("#")
+    r, g, b = (pivot_rgb(int(h[i:i + 2], 16) / 255.0) for i in (0, 2, 4))
+    x = (r * 0.4124 + g * 0.3576 + b * 0.1805) / 0.95047
+    y = (r * 0.2126 + g * 0.7152 + b * 0.0722)
+    z = (r * 0.0193 + g * 0.1192 + b * 0.9505) / 1.08883
+    fx, fy, fz = (pivot_xyz(t) for t in (x, y, z))
+    return (116 * fy - 16, 500 * (fx - fy), 200 * (fy - fz))
+
+
+def _delta_e(c1, c2):
+    l1, l2 = _srgb_to_lab(c1), _srgb_to_lab(c2)
+    return math.sqrt(sum((a - b) ** 2 for a, b in zip(l1, l2)))
+
+
+def test_adjacent_grade_colours_are_clearly_distinct():
+    """Adjacent buckets sit next to each other on a trace, so they are the
+    pairs that must be told apart. Under 25 dE reads as one colour once scene
+    shading is applied -- the old orange/red pair was ~35 and still merged."""
+    from backend.src.services.grade_coloring import GRADE_BUCKETS
+
+    colours = [c for _upper, c, _label in GRADE_BUCKETS]
+    for i in range(1, len(colours)):
+        d = _delta_e(colours[i - 1], colours[i])
+        assert d >= 40.0, (
+            "buckets %d and %d are too close: dE=%.1f (%s vs %s)"
+            % (i - 1, i, d, colours[i - 1], colours[i])
+        )
+
+
+def test_every_grade_colour_is_visible_against_the_viewport_background():
+    from backend.src.services.grade_coloring import GRADE_BUCKETS
+
+    background = "#0d1524"
+    for _upper, colour, label in GRADE_BUCKETS:
+        assert _delta_e(colour, background) >= 45.0, \
+            "%s (%s) does not stand out from the viewport background" % (label, colour)

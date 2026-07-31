@@ -67,8 +67,17 @@ export class AssayIntervals {
               end: new THREE.Vector3(assay.end_pos[0], assay.end_pos[2], assay.end_pos[1])
             }];
 
-        for (const seg of segments) {
+        for (let s = 0; s < segments.length; s++) {
+          const seg = segments[s];
           bucket.push({
+            // Interior joints of a multi-segment interval get a small overlap
+            // so the cylinders interpenetrate around a dogleg instead of
+            // leaving a wedge-shaped notch on the outside of the bend. Both
+            // sides are the same colour, so the overlap is invisible -- and
+            // interval END caps are deliberately excluded, keeping the
+            // boundary between two different grades exactly flush.
+            joinStart: s > 0,
+            joinEnd: s < segments.length - 1,
             id: assay.id,
             hole_id: dh.hole_id,
             collar_id: dh.collar_id,
@@ -195,15 +204,31 @@ export class AssayIntervals {
 
       // Direction along the local tangent of the trace for this sub-segment.
       const direction = new THREE.Vector3().subVectors(data.end, data.start);
-      const length = direction.length();
+      const rawLength = direction.length();
 
-      // Midpoint
+      // Grow interior joints outward along the segment axis (see joinStart /
+      // joinEnd above). Half a radius each side closes the bend notch without
+      // being visible along a straight run.
+      const overlap = DRILL_TUBE_RADIUS * 0.5;
+      const growStart = data.joinStart ? overlap : 0;
+      const growEnd = data.joinEnd ? overlap : 0;
+      const length = rawLength + growStart + growEnd;
+
+      // Midpoint, shifted by any asymmetric growth.
       position.addVectors(data.start, data.end).multiplyScalar(0.5);
+      if (rawLength > 0 && (growStart || growEnd)) {
+        position.addScaledVector(
+          direction.clone().normalize(), (growEnd - growStart) * 0.5
+        );
+      }
 
       // Rotation: align the cylinder's Y axis with the segment direction, so
       // the tube runs along the trajectory and its caps stay perpendicular
       // to it.
-      if (length > 0) {
+      // Guard on rawLength, not length: the overlap above can make `length`
+      // positive for a zero-length segment, and normalising a zero vector
+      // would put NaN into the instance matrix.
+      if (rawLength > 0) {
         const dirNormalized = direction.clone().normalize();
         quaternion.setFromUnitVectors(alignVector, dirNormalized);
       } else {
@@ -215,7 +240,7 @@ export class AssayIntervals {
       // visibility (which changes rarely, on camera movement) still
       // touches the CPU-side instance matrix.
       const hiddenByLod = this.lodStates ? this.lodStates.get(data.collar_id) === false : false;
-      if (hiddenByLod || length <= 0) {
+      if (hiddenByLod || rawLength <= 0) {
         scale.set(0, 0, 0);
       } else {
         // Uniform radius for every interval: grade is communicated by colour

@@ -1,0 +1,6 @@
+hole_id,easting,northing,elevation,hole_type,status
+DDH-001,515000,4515000,1050,DD,drilled
+DDH-002,515060,4515020,1045,DD,drilled
+DDH-003,515120,4515040,1040,DD,
+PLAN-001,515180,4515060,1038,DD,planned
+PLAN-002,515240,4515080,1035,RC,proposed

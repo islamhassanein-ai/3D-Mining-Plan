@@ -1,4 +1,9 @@
-import { GRADE_BUCKETS, getGradeBucketIndex, UNSAMPLED_BUCKET_INDEX } from '../scene/grade_scale.js';
+import {
+  GRADE_BUCKETS,
+  getGradeBucketIndex,
+  formatBucketRange,
+  UNSAMPLED_BUCKET_INDEX,
+} from '../scene/grade_scale.js';
 
 // Grade-distribution histogram bound to the cutoff slider. Shows the assay
 // grade population split across the six canonical grade buckets, marks
@@ -42,14 +47,27 @@ export class GradeHistogram {
         transition: opacity 0.12s ease;
       }
       .gh-bar.below { opacity: 0.22; }
+      /* Explicit From-To bounds under each bar. A single number per column was
+         ambiguous -- it read as the value the bar counts rather than the edge
+         of its bracket. Stacked so "0.10" over "0.30" stays legible in the
+         narrow sidebar column instead of being clipped. */
       .gh-axis {
         display: grid;
         grid-template-columns: repeat(6, 1fr);
         gap: 3px;
-        font-size: 7.5px;
+        font-size: 8px;
+        line-height: 1.25;
         color: var(--text-faint, #5f7091);
         text-align: center;
       }
+      .gh-axis .gh-range {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        white-space: nowrap;
+      }
+      .gh-axis .gh-range .gh-to { color: var(--text-muted, #93a2ba); }
+      .gh-axis .gh-range .gh-dash { opacity: 0.55; line-height: 0.8; }
       .gh-readout {
         display: flex;
         justify-content: space-between;
@@ -123,14 +141,22 @@ export class GradeHistogram {
       // A bucket is "below cutoff" when its entire upper bound is under the
       // cutoff (upper === null is the open-ended high bucket, never below).
       const below = b.upper !== null && b.upper <= this.cutoff;
-      return `<div class="gh-col" title="${b.label} g/t: ${counts[i]} intervals">
+      return `<div class="gh-col" title="${formatBucketRange(b)} g/t: ${counts[i]} intervals">
         <div class="gh-bar ${below ? 'below' : ''}" style="height:${hPct}%;background:${b.color}"></div>
       </div>`;
     }).join('');
 
-    // Compact axis labels (bucket upper edges), skipping some to avoid clutter.
-    const axis = ['.1', '.3', '.5', '1', '3', '3+']
-      .map(l => `<span>${l}</span>`).join('');
+    // Explicit From-To bounds per bucket rather than a single edge number.
+    const axis = GRADE_BUCKETS.map(b => {
+      if (b.to === null) {
+        return `<span class="gh-range"><span class="gh-to">≥ ${b.from.toFixed(2)}</span></span>`;
+      }
+      return `<span class="gh-range">
+        <span>${b.from.toFixed(2)}</span>
+        <span class="gh-dash">–</span>
+        <span class="gh-to">${b.to.toFixed(2)}</span>
+      </span>`;
+    }).join('');
 
     const pctMeters = totalMeters > 0 ? (aboveMeters / totalMeters * 100) : 0;
 

@@ -36,6 +36,10 @@ router = APIRouter(prefix="/projects/{project_id}/scene", tags=["scene"])
 # here so existing importers (and tests) keep working.
 __all__ = ["router", "interpolate_trace_position", "get_project_scene"]
 
+# Length given to a hole that has neither surveys nor logged intervals, so it
+# is still visible as a stub rather than collapsing to a point at the collar.
+DEFAULT_HOLE_LENGTH_M = 50.0
+
 
 @router.get("")
 def get_project_scene(
@@ -61,23 +65,6 @@ def get_project_scene(
         surveys = db.query(Survey).filter(
             Survey.collar_id == collar.id
         ).order_by(Survey.depth).all()
-        
-        surveys_list = [
-            {"depth": s.depth, "dip": s.dip, "azimuth": s.azimuth}
-            for s in surveys
-        ]
-        
-        # Fallback: if no surveys exist, assume straight vertical downward hole
-        if not surveys_list:
-            surveys_list = [
-                {"depth": 0.0, "dip": -90.0, "azimuth": 0.0},
-                {"depth": 1000.0, "dip": -90.0, "azimuth": 0.0}
-            ]
-            
-        # Compute trace points
-        trace = compute_minimum_curvature_trace(
-            collar.easting, collar.northing, collar.elevation, surveys_list
-        )
 
         # Fetch active assay intervals
         assays = db.query(AssayInterval).filter(
@@ -91,12 +78,42 @@ def get_project_scene(
             LithologyInterval.superseded_by.is_(None)
         ).order_by(LithologyInterval.from_depth).all()
 
+        # The logged data tells us how deep the hole actually goes. This is
+        # needed BEFORE the trace is built, because a hole with no surveys has
+        # to borrow its length from somewhere.
+        interval_depths = [float(a.to_depth) for a in assays]
+        interval_depths += [float(l.to_depth) for l in lithologies]
+        logged_depth = max(interval_depths) if interval_depths else 0.0
+
+        surveys_list = [
+            {"depth": s.depth, "dip": s.dip, "azimuth": s.azimuth}
+            for s in surveys
+        ]
+
+        # Fallback: no surveys -> assume a straight vertical hole, ending at
+        # the deepest logged interval.
+        #
+        # This used to end at a flat 1000 m. The samples were placed at their
+        # correct absolute depths, but the trace was drawn 1000 m long, so a
+        # hole whose samples stop at 20 m rendered them inside the top 2% of
+        # the line -- indistinguishable from "everything is stuck at the
+        # collar". Sizing the fallback to the data keeps the hole in scale.
+        if not surveys_list:
+            fallback_depth = logged_depth if logged_depth > 0 else DEFAULT_HOLE_LENGTH_M
+            surveys_list = [
+                {"depth": 0.0, "dip": -90.0, "azimuth": 0.0},
+                {"depth": fallback_depth, "dip": -90.0, "azimuth": 0.0},
+            ]
+
+        # Compute trace points
+        trace = compute_minimum_curvature_trace(
+            collar.easting, collar.northing, collar.elevation, surveys_list
+        )
+
         # End-of-hole depth drives both the trace extension and the unsampled
         # gap list. Surveys frequently stop short of the deepest logged
         # interval; without extending, every interval past the last station
         # would clamp onto the same coordinate.
-        interval_depths = [float(a.to_depth) for a in assays]
-        interval_depths += [float(l.to_depth) for l in lithologies]
         total_depth = compute_total_depth(trace, interval_depths)
         trace = extend_trace_to_depth(trace, total_depth)
 

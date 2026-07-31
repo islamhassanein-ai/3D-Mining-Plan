@@ -56,11 +56,18 @@ def get_csv_reader(file_content: bytes) -> Tuple[csv.DictReader, str]:
     return reader, delimiter
 
 def parse_collar_csv(file_content: bytes) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
-    """Parses Collar CSV. Required columns: hole_id, easting, northing, elevation."""
+    """Parses Collar CSV.
+
+    Required columns: hole_id, easting, northing, elevation.
+    Optional: utm_zone, hole_type (DD/RC/TR/CH/FC), and status / hole_status
+    ('drilled' or 'planned', with the aliases in _HOLE_STATUS_ALIASES).
+    A missing status column means every hole is 'drilled', so existing collar
+    files keep importing unchanged.
+    """
     reader, _ = get_csv_reader(file_content)
     parsed = []
     errors = []
-    
+
     required = {"hole_id", "easting", "northing", "elevation"}
     if not reader.fieldnames or not required.issubset(set(reader.fieldnames)):
         missing = required - set(reader.fieldnames or [])
@@ -91,13 +98,41 @@ def parse_collar_csv(file_content: bytes) -> Tuple[List[Dict[str, Any]], List[Di
                 continue
                 
             utm_zone = row.get("utm_zone", "").strip()
-            
+
+            # Planned vs drilled. Accepts 'status' or 'hole_status'; blank or
+            # absent means 'drilled'.
+            status_raw = (row.get("hole_status") or row.get("status") or "").strip().lower()
+            if status_raw and status_raw not in _HOLE_STATUS_ALIASES:
+                errors.append({
+                    "row": i,
+                    "error": (
+                        f"Invalid status '{status_raw}'. Use 'drilled' or 'planned'."
+                    ),
+                    "raw_data": row,
+                })
+                continue
+            hole_status = _HOLE_STATUS_ALIASES.get(status_raw, "drilled")
+
+            hole_type_raw = (row.get("hole_type") or row.get("type") or "").strip().upper()
+            if hole_type_raw and hole_type_raw not in _VALID_HOLE_TYPES:
+                errors.append({
+                    "row": i,
+                    "error": (
+                        f"Invalid hole_type '{hole_type_raw}'. Must be one of: "
+                        f"{', '.join(sorted(_VALID_HOLE_TYPES))}"
+                    ),
+                    "raw_data": row,
+                })
+                continue
+
             parsed.append({
                 "hole_id": hole_id,
                 "easting": easting,
                 "northing": northing,
                 "elevation": elevation,
-                "utm_zone": utm_zone
+                "utm_zone": utm_zone,
+                "hole_status": hole_status,
+                "hole_type": hole_type_raw or None,
             })
         except Exception as e:
             errors.append({"row": i, "error": f"Unexpected error: {str(e)}", "raw_data": row})
