@@ -20,7 +20,14 @@ if not os.getenv("DATABASE_URL"):
 # Default to local PostgreSQL if DATABASE_URL is not set
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/mining_db")
 
-engine = create_engine(DATABASE_URL)
+# SQLite (run.ps1 -UseSQLite, for quick local testing without Postgres) rejects
+# connections reused across threads by default, and FastAPI runs sync endpoints
+# on a threadpool -- so every request after the first would fail without this.
+_connect_args = {}
+if DATABASE_URL.startswith("sqlite"):
+    _connect_args["check_same_thread"] = False
+
+engine = create_engine(DATABASE_URL, connect_args=_connect_args)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 

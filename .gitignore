@@ -61,6 +61,12 @@ local_settings.py
 db.sqlite3
 db.sqlite3-journal
 
+# Local SQLite database created by `run.ps1 -UseSQLite` (quick-test mode)
+mining_dev.db
+mining_dev.db-journal
+mining_dev.db-wal
+mining_dev.db-shm
+
 # Sphinx documentation
 doc/_build/
 
