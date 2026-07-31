@@ -2,6 +2,13 @@ import csv
 import io
 from typing import List, Dict, Any, Tuple
 
+from backend.src.services.dip_convention import (
+    POSITIVE_DOWN,
+    detect_dip_convention,
+    normalize_dip,
+    normalize_survey_dips,
+)
+
 def clean_header(header: str) -> str:
     return header.strip().lower().replace(" ", "_")
 
@@ -194,7 +201,24 @@ def parse_survey_csv(file_content: bytes) -> Tuple[List[Dict[str, Any]], List[Di
             })
         except Exception as e:
             errors.append({"row": i, "error": f"Unexpected error: {str(e)}", "raw_data": row})
-            
+
+    # A survey file whose dips are ALL positive is using the "degrees below
+    # horizontal" convention. Left as-is it would desurvey every hole upward
+    # into the air, putting all the intervals above the collar.
+    parsed, convention = normalize_survey_dips(parsed)
+    if convention == POSITIVE_DOWN:
+        errors.append({
+            "row": 0,
+            "error": (
+                "All dips in this survey file are positive, so they were read as "
+                "degrees BELOW horizontal and stored as negative (downward). "
+                "If these holes really are drilled upward, supply signed dips "
+                "(-90 = straight down)."
+            ),
+            "raw_data": {},
+            "type": "warning",
+        })
+
     return parsed, errors
 
 def parse_assay_csv(file_content: bytes) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
@@ -704,5 +728,48 @@ def parse_combined_csv(file_content: bytes) -> Tuple[List[Dict[str, Any]], List[
             })
         except Exception as e:
             errors.append({"row": i, "error": f"Unexpected error: {str(e)}", "raw_data": row})
+
+    return _apply_combined_dip_convention(parsed, errors)
+
+
+def _apply_combined_dip_convention(parsed, errors):
+    """Normalize inline DD/RC dips in a parsed combined CSV.
+
+    Trench rows are excluded: their dip is the local ground slope at the start
+    point, where a positive value legitimately means uphill.
+    """
+    dips, types = [], []
+    for r in parsed:
+        inline = r.get("inline_survey")
+        if inline is not None:
+            dips.append(inline["dip"])
+            types.append(r.get("hole_type"))
+
+    if detect_dip_convention(dips, types) != POSITIVE_DOWN:
+        return parsed, errors
+
+    flipped = 0
+    for r in parsed:
+        inline = r.get("inline_survey")
+        if inline is None:
+            continue
+        if (r.get("hole_type") or "").upper() in _TRENCH_TYPES:
+            continue
+        inline["dip"] = normalize_dip(inline["dip"], POSITIVE_DOWN)
+        flipped += 1
+
+    if flipped:
+        errors.append({
+            "row": 0,
+            "error": (
+                f"All {flipped} drillhole dips in this file are positive, so they "
+                "were read as degrees BELOW horizontal and stored as negative "
+                "(downward). Otherwise the holes desurvey upward and every "
+                "interval plots above its collar. Supply signed dips "
+                "(-90 = straight down) if these holes really are drilled upward."
+            ),
+            "raw_data": {},
+            "type": "warning",
+        })
 
     return parsed, errors
