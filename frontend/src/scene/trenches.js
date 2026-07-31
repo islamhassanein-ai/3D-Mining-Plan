@@ -1,6 +1,13 @@
 import * as THREE from 'three';
 
-import { GRADE_BUCKETS, getGradeBucketIndex, TRENCH_HEIGHT_BY_BUCKET } from './grade_scale.js';
+import {
+  GRADE_BUCKETS,
+  getGradeBucketIndex,
+  TRENCH_HEIGHT_BY_BUCKET,
+  TRENCH_UNSAMPLED_HEIGHT,
+  UNSAMPLED_BUCKET_INDEX,
+  UNSAMPLED_COLOR,
+} from './grade_scale.js';
 
 // Reconstructs the sample-taking order along a trench from unordered
 // easting/northing points via greedy nearest-neighbor chaining. The API
@@ -91,11 +98,15 @@ export class TrenchesRenderer {
         northing: t.northing,
         elevation: t.elevation != null ? t.elevation : baselineElevation,
         grade: t.grade_value,
+        sample_id: t.sample_id,
         point_order: t.point_order
       });
     }
 
-    const accsByBucket = Array.from({ length: GRADE_BUCKETS.length }, () => newAcc());
+    // One accumulator per grade bucket, plus a trailing slot for unsampled
+    // segments (bucket index -1 maps to GRADE_BUCKETS.length).
+    const UNSAMPLED_SLOT = GRADE_BUCKETS.length;
+    const accsByBucket = Array.from({ length: GRADE_BUCKETS.length + 1 }, () => newAcc());
 
     for (const points of groups.values()) {
       // When every point in the group carries a point_order (the combined-CSV
@@ -115,15 +126,26 @@ export class TrenchesRenderer {
         const p1 = new THREE.Vector3(b.easting, b.elevation, b.northing);
         if (p0.distanceTo(p1) < 1e-6) continue;
 
-        const grade = b.grade != null ? b.grade : (a.grade != null ? a.grade : 0);
-        const bucketIdx = getGradeBucketIndex(grade);
-        appendRibbonSegment(accsByBucket[bucketIdx], p0, p1, TRENCH_HEIGHT_BY_BUCKET[bucketIdx]);
+        // Carry the sample id alongside the grade so a placeholder id
+        // ('NSR', 'No Sample', ...) routes to the unsampled slot instead of
+        // being read as a 0 g/t result.
+        const useB = b.grade != null || a.grade == null;
+        const grade = useB ? b.grade : a.grade;
+        const sampleId = useB ? b.sample_id : a.sample_id;
+
+        const bucketIdx = getGradeBucketIndex(grade, 'g/t', sampleId);
+        const slot = bucketIdx === UNSAMPLED_BUCKET_INDEX ? UNSAMPLED_SLOT : bucketIdx;
+        const height = bucketIdx === UNSAMPLED_BUCKET_INDEX
+          ? TRENCH_UNSAMPLED_HEIGHT
+          : TRENCH_HEIGHT_BY_BUCKET[bucketIdx];
+        appendRibbonSegment(accsByBucket[slot], p0, p1, height);
       }
     }
 
-    for (let b = 0; b < GRADE_BUCKETS.length; b++) {
+    for (let b = 0; b < accsByBucket.length; b++) {
       const acc = accsByBucket[b];
       if (acc.positions.length === 0) continue;
+      const isUnsampledSlot = b === UNSAMPLED_SLOT;
 
       const geometry = new THREE.BufferGeometry();
       geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(acc.positions), 3));
@@ -131,7 +153,7 @@ export class TrenchesRenderer {
       geometry.computeVertexNormals();
 
       const material = new THREE.MeshStandardMaterial({
-        color: GRADE_BUCKETS[b].color,
+        color: isUnsampledSlot ? UNSAMPLED_COLOR : GRADE_BUCKETS[b].color,
         roughness: 0.6,
         metalness: 0.05,
         side: THREE.DoubleSide,
@@ -140,7 +162,10 @@ export class TrenchesRenderer {
       });
 
       const mesh = new THREE.Mesh(geometry, material);
-      mesh.userData = { type: 'trench_fence', bucket: b };
+      mesh.userData = {
+        type: 'trench_fence',
+        bucket: isUnsampledSlot ? UNSAMPLED_BUCKET_INDEX : b,
+      };
       this.group.add(mesh);
     }
   }

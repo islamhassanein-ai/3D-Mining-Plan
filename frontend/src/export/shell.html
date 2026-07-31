@@ -2,11 +2,18 @@
   <!-- Top Header Bar -->
   <div id="app-header">
     <div class="brand">
+      <!-- MONARK_LOGO_SRC is replaced at assembly time with a base64 data URI
+           for frontend/assets/MGM.jpeg (the export CSP allows img-src data:
+           only, so an external file reference would be blocked). When the
+           logo file is absent the sentinel becomes empty and the inline SVG
+           fallback shows instead. -->
       <div class="mark">
+        <img src="<!--MONARK_LOGO_SRC-->" alt="Mallogrim Gold Mine logo" class="brand-logo"
+             onerror="this.remove();this.parentElement.classList.add('mark-fallback')">
         <svg viewBox="0 0 24 24"><path fill="currentColor" d="M22.7,19L13.6,9.9C14.5,7.6 14,4.9 12.1,3C10.1,1 7.1,0.6 4.7,1.7L9,6L6,9L1.6,4.7C0.4,7.1 0.9,10.1 2.9,12.1C4.8,14 7.5,14.5 9.8,13.6L18.9,22.7C19.3,23.1 19.9,23.1 20.3,22.7L22.6,20.4C23.1,20 23.1,19.3 22.7,19Z"/></svg>
       </div>
       <div>
-        <h1>MONARK 3D MINING <span id="header-project-name"></span></h1>
+        <h1>MALLOGRIM GOLD MINE <span id="header-project-name"></span></h1>
         <div class="sub">Drillhole &bull; Trench &bull; Vein Interpretation Visualizer</div>
       </div>
     </div>
@@ -49,14 +56,15 @@
           <div class="control-card">
             <span class="control-label">Au Grade Scale (g/t)</span>
             <div class="grade-legend">
-              <div class="grade-item"><span class="sw" style="background:#ff00ff"></span> &gt; 1.0 <b>High</b></div>
-              <div class="grade-item"><span class="sw" style="background:#f72809"></span> 0.5 &ndash; 1.0</div>
-              <div class="grade-item"><span class="sw" style="background:#fef600"></span> 0.1 &ndash; 0.5</div>
-              <div class="grade-item"><span class="sw" style="background:#27ea5b"></span> 0.05 &ndash; 0.1</div>
-              <div class="grade-item"><span class="sw" style="background:#2b24eb"></span> 0.01 &ndash; 0.05</div>
-              <div class="grade-item"><span class="sw" style="background:#7d8b8f"></span> 0 &ndash; 0.01 <b>BG</b></div>
+              <div class="grade-item"><span class="sw" style="background:#ec4899"></span> &ge; 3.00 <b>High</b></div>
+              <div class="grade-item"><span class="sw" style="background:#ef4444"></span> 1.00 &ndash; 3.00</div>
+              <div class="grade-item"><span class="sw" style="background:#f97316"></span> 0.50 &ndash; 1.00</div>
+              <div class="grade-item"><span class="sw" style="background:#22c55e"></span> 0.30 &ndash; 0.50</div>
+              <div class="grade-item"><span class="sw" style="background:#2563eb"></span> 0.10 &ndash; 0.30</div>
+              <div class="grade-item"><span class="sw" style="background:#64748b"></span> &lt; 0.10</div>
+              <div class="grade-item"><span class="sw" style="background:#141414;border:1px dashed #64748b"></span> No Sample <b>Gap</b></div>
             </div>
-            <p style="font-size:10px;color:var(--text-faint);line-height:1.5;margin:6px 0 0 0;">Cylinder diameter scales with grade bucket &mdash; higher-grade intervals render visibly thicker.</p>
+            <p style="font-size:10px;color:var(--text-faint);line-height:1.5;margin:6px 0 0 0;">Interval tubes render at a uniform diameter along the desurveyed trajectory &mdash; grade is shown by colour. Unsampled zones show the bare trace only.</p>
           </div>
 
           <!-- Layer Toggles -->

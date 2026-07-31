@@ -123,14 +123,21 @@ def test_get_collar_details_success():
     assert len(data["assays"]) == 1
     assert len(data["lithologies"]) == 1
     
-    # Test merged_intervals ordering
+    # Test merged_intervals ordering. The log is continuous from 0 to the end
+    # of hole, so the 2.5 - 10.0 m stretch the assay does not cover appears as
+    # an explicit "unsampled" row alongside the lithology that spans it.
     merged = data["merged_intervals"]
-    assert len(merged) == 2
+    assert len(merged) == 3
     assert merged[0]["type"] == "assay"
     assert merged[0]["from_depth"] == 0.0
     assert merged[0]["to_depth"] == 2.5
-    assert merged[1]["type"] == "lithology"
-    assert merged[1]["from_depth"] == 2.5
+
+    rest = {m["type"]: m for m in merged[1:]}
+    assert set(rest) == {"lithology", "unsampled"}
+    assert rest["lithology"]["from_depth"] == 2.5
+    assert rest["unsampled"]["from_depth"] == 2.5
+    assert rest["unsampled"]["to_depth"] == 10.0
+    assert rest["unsampled"]["value"] is None
 
 def test_get_true_thickness_success():
     db = TestingSessionLocal()

@@ -240,14 +240,24 @@ def minimal_frontend(tmp_path, monkeypatch):
 def _seed_minimal_project(db, email="sa_owner@example.com"):
     user = User(id=uuid.uuid4(), email=email, role="owner")
     proj = Project(id=uuid.uuid4(), name="SA Test", owner_id=user.id, utm_zone="36N")
+    db.add_all([user, proj])
+    db.flush()  # satisfy ImportBatch.project_id -> project.id FK
+
+    # A real batch row: collar.import_batch_id is a FK, so a bare uuid4() here
+    # fails the constraint before the export is ever exercised.
+    batch = ImportBatch(id=uuid.uuid4(), project_id=proj.id,
+                        source_file="src", status="committed")
+    db.add(batch)
+    db.flush()
+
     collar = Collar(
         id=uuid.uuid4(), project_id=proj.id, hole_id="SA001",
         easting=350000.0, northing=2800000.0, elevation=100.0,
-        utm_zone="36N", import_batch_id=uuid.uuid4()
+        utm_zone="36N", import_batch_id=batch.id
     )
     survey = Survey(id=uuid.uuid4(), collar_id=collar.id,
                     depth=50.0, dip=-60.0, azimuth=180.0)
-    db.add_all([user, proj, collar, survey])
+    db.add_all([collar, survey])
     db.commit()
     return user, proj
 

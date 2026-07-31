@@ -182,6 +182,7 @@ def route_combined_rows(rows: List[Dict]) -> Dict[str, List[Dict]]:
                 "elevation": r["elevation"],
                 "utm_zone":  None,   # resolved per-project at commit
                 "hole_type": hole_type,
+                "hole_status": r.get("hole_status") or "drilled",
                 "zone":      zone,
                 "csv_row":   csv_row,
             })

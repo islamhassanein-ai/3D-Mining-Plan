@@ -55,12 +55,23 @@ export class SceneHover {
   setData(drillholes) {
     this.holes.clear();
     for (const dh of (drillholes || [])) {
-      let peak = 0;
-      for (const a of dh.assays) if (a.grade_value > peak) peak = a.grade_value;
+      // Unsampled intervals have a null grade -- excluded so they never
+      // contribute to (or zero out) the peak.
+      let peak = null;
+      for (const a of dh.assays) {
+        const g = Number(a.grade_value);
+        if (Number.isFinite(g) && (peak === null || g > peak)) peak = g;
+      }
       // Map to Three.js Y-up (Easting -> X, Elevation -> Y, Northing -> Z),
       // matching drillhole_traces.js.
       const points = (dh.trace || []).map(p => new THREE.Vector3(p.x, p.z, p.y));
-      this.holes.set(dh.collar_id, { holeId: dh.hole_id, peak, points });
+      this.holes.set(dh.collar_id, {
+        holeId: dh.hole_id,
+        peak,
+        points,
+        isPlanned: dh.hole_status === 'planned',
+        totalDepth: dh.total_depth ?? null,
+      });
     }
     this._clearHover();
   }
@@ -144,10 +155,19 @@ export class SceneHover {
     const rect = this.dom.getBoundingClientRect();
     this.tooltip.style.left = (event.clientX - rect.left) + 'px';
     this.tooltip.style.top = (event.clientY - rect.top) + 'px';
+    const status = hole.isPlanned
+      ? `<span style="color:#67e8f9"> &middot; Status: Planned</span>`
+      : '';
+    const peak = hole.peak === null
+      ? `<span style="color:#93a2ba"> &middot; no assays</span>`
+      : `<span style="color:#93a2ba"> &middot; peak </span><b>${hole.peak.toFixed(2)} g/t</b>`;
+    const depth = hole.totalDepth != null
+      ? `<span style="color:#93a2ba"> &middot; EOH ${hole.totalDepth.toFixed(1)} m</span>`
+      : '';
+
     this.tooltip.innerHTML =
-      `<b style="color:#e8c76b">${hole.holeId}</b>` +
-      `<span style="color:#93a2ba"> &middot; peak </span>` +
-      `<b>${hole.peak.toFixed(2)} g/t</b>`;
+      `<b style="color:${hole.isPlanned ? '#67e8f9' : '#e8c76b'}">${hole.holeId}</b>` +
+      status + peak + depth;
     this.tooltip.style.opacity = '1';
   }
 

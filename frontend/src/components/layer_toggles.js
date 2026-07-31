@@ -7,10 +7,16 @@ export class LayerTogglePanel {
 
     this.layers = [
       { key: 'traces', label: 'Drillhole Traces', color: '#9ca3af', get: () => viewport.tracesRenderer && viewport.tracesRenderer.group },
-      { key: 'assays', label: 'Assay Intervals', color: '#ff00ff', get: () => viewport.assaysRenderer && viewport.assaysRenderer.mesh },
+      { key: 'assays', label: 'Assay Intervals', color: '#ec4899', get: () => viewport.assaysRenderer && viewport.assaysRenderer.mesh },
+      // Planned holes are their own layer: both the dashed trace group and
+      // the translucent target-interval mesh follow this one switch.
+      { key: 'planned', label: 'Planned Boreholes', color: '#67e8f9', get: () => [
+        viewport.tracesRenderer && viewport.tracesRenderer.plannedGroup,
+        viewport.assaysRenderer && viewport.assaysRenderer.plannedMesh,
+      ] },
       { key: 'lithology', label: 'Lithology', color: '#fef08a', get: () => viewport.lithologiesRenderer && viewport.lithologiesRenderer.mesh },
       { key: 'topography', label: 'Topography', color: '#3b82f6', get: () => viewport.topographyRenderer && viewport.topographyRenderer.group },
-      { key: 'trenches', label: 'Trenches', color: '#f72809', get: () => viewport.trenchesRenderer && viewport.trenchesRenderer.group },
+      { key: 'trenches', label: 'Trenches', color: '#ef4444', get: () => viewport.trenchesRenderer && viewport.trenchesRenderer.group },
       { key: 'wireframes', label: 'Vein Wireframes', color: '#ec4899', get: () => viewport.wireframesRenderer && viewport.wireframesRenderer.group },
       { key: 'structural', label: 'Structural Readings', color: '#eab308', get: () => viewport.structuralReadingsRenderer && viewport.structuralReadingsRenderer.group },
       { key: 'labels', label: 'Borehole Labels', color: '#e8c76b', get: () => viewport.boreholeLabelsRenderer && viewport.boreholeLabelsRenderer.group, defaultOff: true },
@@ -87,11 +93,16 @@ export class LayerTogglePanel {
     });
   }
 
+  // A layer's get() may return a single Object3D or an array of them (the
+  // planned-borehole layer spans two renderers).
   applyOne(key) {
     const layer = this.layers.find(l => l.key === key);
     if (!layer) return;
-    const obj = layer.get();
-    if (obj) obj.visible = this.state[key];
+    const result = layer.get();
+    const objects = Array.isArray(result) ? result : [result];
+    for (const obj of objects) {
+      if (obj) obj.visible = this.state[key];
+    }
   }
 
   // Re-applies all stored toggle states -- call after reloading project

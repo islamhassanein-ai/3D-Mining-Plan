@@ -57,7 +57,24 @@
       box-shadow: 0 0 0 1px rgba(212, 175, 55, 0.35), 0 4px 10px rgba(0, 0, 0, 0.4);
       flex-shrink: 0;
     }
-    #app-header .mark svg { width: 20px; height: 20px; color: #0b1220; }
+    /* The logo image fills the mark; the inline SVG underneath is the
+       fallback, shown only when the image fails to load (the img element
+       removes itself and adds .mark-fallback). */
+    #app-header .mark { overflow: hidden; padding: 0; }
+    #app-header .mark .brand-logo {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      border-radius: 8px;
+    }
+    #app-header .mark svg { display: none; }
+    #app-header .mark.mark-fallback svg {
+      display: block;
+      width: 20px;
+      height: 20px;
+      color: #0b1220;
+    }
     #app-header h1 {
       font-size: 15px;
       margin: 0;

@@ -341,10 +341,34 @@ _COMBINED_HEADER_ALIASES = [
     ("azimuth",       {"azimuth", "azi", "bearing"}),
     ("total_length",  {"total_length", "total_depth", "length", "eoh"}),
     ("hole_type",     {"type", "hole_type"}),
+    ("hole_status",   {"status", "hole_status", "planned", "is_planned"}),
     ("zone",          {"zone", "area", "prospect"}),
 ]
 
 _VALID_HOLE_TYPES = {"DD", "RC", "TR", "CH", "FC"}
+
+# Accepted Status values, normalised to 'drilled' / 'planned'. Blank inherits
+# from the hole's first row, then defaults to 'drilled' -- historical CSVs
+# have no Status column and describe holes that were actually drilled.
+_HOLE_STATUS_ALIASES = {
+    "drilled":   "drilled",
+    "drill":     "drilled",
+    "completed": "drilled",
+    "complete":  "drilled",
+    "existing":  "drilled",
+    "actual":    "drilled",
+    "false":     "drilled",
+    "no":        "drilled",
+    "0":         "drilled",
+    "planned":   "planned",
+    "plan":      "planned",
+    "proposed":  "planned",
+    "target":    "planned",
+    "design":    "planned",
+    "true":      "planned",
+    "yes":       "planned",
+    "1":         "planned",
+}
 _TRENCH_TYPES     = {"TR", "CH", "FC"}
 _COLLAR_TYPES     = {"DD", "RC"}
 
@@ -425,6 +449,9 @@ def parse_combined_csv(file_content: bytes) -> Tuple[List[Dict[str, Any]], List[
     # Both store {"hole_type", "zone"} for type/zone inheritance on continuation rows.
     collar_meta: Dict[str, Dict] = {}
     trench_meta: Dict[str, Dict] = {}
+    # hole_id -> 'drilled' | 'planned', so continuation rows inherit the
+    # status declared on the hole's first row.
+    hole_status_meta: Dict[str, str] = {}
 
     for i, row in enumerate(reader, start=2):
         try:
@@ -580,6 +607,23 @@ def parse_combined_csv(file_content: bytes) -> Tuple[List[Dict[str, Any]], List[
                     continue
                 inline_survey = {"dip": dip, "azimuth": azimuth, "total_length": total_length}
 
+            # --- Hole status (inherits from first row on continuation) ---
+            status_raw = get_canonical(row, "hole_status").strip().lower()
+            if status_raw != "":
+                if status_raw not in _HOLE_STATUS_ALIASES:
+                    errors.append({
+                        "row": i,
+                        "error": (
+                            f"Invalid status '{status_raw}'. Use 'drilled' or 'planned'."
+                        ),
+                        "raw_data": row,
+                    })
+                    continue
+                hole_status = _HOLE_STATUS_ALIASES[status_raw]
+            else:
+                hole_status = hole_status_meta.get(hole_id, "drilled")
+            hole_status_meta.setdefault(hole_id, hole_status)
+
             # --- Zone (inherits from first row on continuation) ---
             zone_raw = get_canonical(row, "zone").strip()
             if zone_raw != "":
@@ -612,6 +656,7 @@ def parse_combined_csv(file_content: bytes) -> Tuple[List[Dict[str, Any]], List[
                 "northing":     northing,
                 "elevation":    elevation,
                 "hole_type":    hole_type,
+                "hole_status":  hole_status,
                 "zone":         zone,
                 "inline_survey": inline_survey,
                 "end_coords":   end_coords,

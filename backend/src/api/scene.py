@@ -18,7 +18,13 @@ from backend.src.models.structural_reading import StructuralReading
 import os
 import json
 from backend.src.services.desurvey import compute_minimum_curvature_trace
-from backend.src.services.grade_coloring import get_grade_color
+from backend.src.services.grade_coloring import get_grade_color, is_unsampled
+from backend.src.services.downhole_log import (
+    compute_total_depth,
+    extend_trace_to_depth,
+    find_unsampled_gaps,
+    interpolate_trace_position,
+)
 from backend.src.storage.local_filesystem import LocalFilesystemStorage
 from backend.src.api.project_access import get_project_or_404, enforce_project_ownership
 
@@ -26,32 +32,10 @@ storage = LocalFilesystemStorage()
 
 router = APIRouter(prefix="/projects/{project_id}/scene", tags=["scene"])
 
-def interpolate_trace_position(trace: List[Dict[str, float]], depth: float) -> List[float]:
-    """Linearly interpolates 3D position along a pre-computed desurveyed trace."""
-    if not trace:
-        return [0.0, 0.0, 0.0]
-        
-    if depth <= trace[0]['depth']:
-        return [trace[0]['x'], trace[0]['y'], trace[0]['z']]
-        
-    if depth >= trace[-1]['depth']:
-        return [trace[-1]['x'], trace[-1]['y'], trace[-1]['z']]
-        
-    for i in range(1, len(trace)):
-        p1 = trace[i - 1]
-        p2 = trace[i]
-        if p1['depth'] <= depth <= p2['depth']:
-            d1, d2 = p1['depth'], p2['depth']
-            if abs(d2 - d1) < 1e-9:
-                return [p1['x'], p1['y'], p1['z']]
-            t = (depth - d1) / (d2 - d1)
-            return [
-                p1['x'] + t * (p2['x'] - p1['x']),
-                p1['y'] + t * (p2['y'] - p1['y']),
-                p1['z'] + t * (p2['z'] - p1['z'])
-            ]
-            
-    return [trace[-1]['x'], trace[-1]['y'], trace[-1]['z']]
+# interpolate_trace_position moved to services/downhole_log.py and re-exported
+# here so existing importers (and tests) keep working.
+__all__ = ["router", "interpolate_trace_position", "get_project_scene"]
+
 
 @router.get("")
 def get_project_scene(
@@ -94,63 +78,98 @@ def get_project_scene(
         trace = compute_minimum_curvature_trace(
             collar.easting, collar.northing, collar.elevation, surveys_list
         )
-        
+
         # Fetch active assay intervals
         assays = db.query(AssayInterval).filter(
             AssayInterval.collar_id == collar.id,
             AssayInterval.superseded_by.is_(None)
-        ).all()
-        
-        scene_assays = []
-        for a in assays:
-            start_pos = interpolate_trace_position(trace, a.from_depth)
-            end_pos = interpolate_trace_position(trace, a.to_depth)
-            color = get_grade_color(a.grade_value, a.grade_unit)
-            
-            scene_assays.append({
-                "id": str(a.id),
-                "from_depth": a.from_depth,
-                "to_depth": a.to_depth,
-                "grade_value": float(a.grade_value),
-                "grade_unit": a.grade_unit,
-                "below_detection_limit": a.below_detection_limit,
-                "qaqc_flag": a.qaqc_flag,
-                "color": color,
-                "start_pos": start_pos,
-                "end_pos": end_pos
-            })
-            
+        ).order_by(AssayInterval.from_depth).all()
+
         # Fetch active lithology intervals
         lithologies = db.query(LithologyInterval).filter(
             LithologyInterval.collar_id == collar.id,
             LithologyInterval.superseded_by.is_(None)
-        ).all()
-        
+        ).order_by(LithologyInterval.from_depth).all()
+
+        # End-of-hole depth drives both the trace extension and the unsampled
+        # gap list. Surveys frequently stop short of the deepest logged
+        # interval; without extending, every interval past the last station
+        # would clamp onto the same coordinate.
+        interval_depths = [float(a.to_depth) for a in assays]
+        interval_depths += [float(l.to_depth) for l in lithologies]
+        total_depth = compute_total_depth(trace, interval_depths)
+        trace = extend_trace_to_depth(trace, total_depth)
+
+        scene_assays = []
+        for a in assays:
+            # from_depth/to_depth are absolute distances from the collar
+            # (0.0 m), so an interval logged at 37 m - 38 m lands 37 m down the
+            # desurveyed curve regardless of how much of the hole above it was
+            # left unsampled.
+            start_pos = interpolate_trace_position(trace, float(a.from_depth))
+            end_pos = interpolate_trace_position(trace, float(a.to_depth))
+            unsampled = is_unsampled(a.grade_value, a.sample_id)
+
+            scene_assays.append({
+                "id": str(a.id),
+                "sample_id": a.sample_id,
+                "from_depth": float(a.from_depth),
+                "to_depth": float(a.to_depth),
+                "grade_value": None if unsampled else float(a.grade_value),
+                "grade_unit": a.grade_unit,
+                "unsampled": unsampled,
+                "below_detection_limit": a.below_detection_limit,
+                "qaqc_flag": a.qaqc_flag,
+                "color": get_grade_color(a.grade_value, a.grade_unit, a.sample_id),
+                "start_pos": start_pos,
+                "end_pos": end_pos
+            })
+
         scene_lithologies = []
         for l in lithologies:
-            start_pos = interpolate_trace_position(trace, l.from_depth)
-            end_pos = interpolate_trace_position(trace, l.to_depth)
-            
+            start_pos = interpolate_trace_position(trace, float(l.from_depth))
+            end_pos = interpolate_trace_position(trace, float(l.to_depth))
+
             scene_lithologies.append({
                 "id": str(l.id),
-                "from_depth": l.from_depth,
-                "to_depth": l.to_depth,
+                "from_depth": float(l.from_depth),
+                "to_depth": float(l.to_depth),
                 "lith_code": l.lith_code,
                 "rqd_percent": l.rqd_percent,
                 "core_recovery_percent": l.core_recovery_percent,
                 "start_pos": start_pos,
                 "end_pos": end_pos
             })
-            
+
+        # Depth ranges with no assay coverage. The 3D viewer renders only the
+        # bare trace line through these -- no interval tube -- while the
+        # inspector lists them as explicit "No Sample" rows.
+        unsampled_gaps = [
+            {
+                "from_depth": g_from,
+                "to_depth": g_to,
+                "start_pos": interpolate_trace_position(trace, g_from),
+                "end_pos": interpolate_trace_position(trace, g_to),
+            }
+            for g_from, g_to in find_unsampled_gaps(
+                [(float(a.from_depth), float(a.to_depth)) for a in assays],
+                total_depth,
+            )
+        ]
+
         scene_drillholes.append({
             "collar_id": str(collar.id),
             "hole_id": collar.hole_id,
             "easting": collar.easting,
             "northing": collar.northing,
             "elevation": collar.elevation,
+            "hole_type": collar.hole_type,
+            "hole_status": collar.hole_status or "drilled",
+            "total_depth": total_depth,
             "trace": trace,
             "assays": scene_assays,
-            "lithologies": scene_lithologies
+            "lithologies": scene_lithologies,
+            "unsampled_gaps": unsampled_gaps,
         })
         
     # Fetch trenches -- only active (non-superseded) rows, ordered so the

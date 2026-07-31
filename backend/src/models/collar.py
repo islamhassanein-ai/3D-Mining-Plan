@@ -21,6 +21,10 @@ class Collar(Base):
     # backfills 'DD' for existing collars. Populated by the combined-CSV import;
     # the four-file collar importer leaves it NULL (those rows are implicitly DD).
     hole_type = Column(String(10), nullable=True)
+    # 'drilled' (completed) or 'planned' (proposed / not yet drilled). Nullable
+    # for historical rows; the e5f6a7b8c9d0 migration backfills 'drilled', and
+    # readers treat NULL as 'drilled'.
+    hole_status = Column(String(10), nullable=True)
 
     # Relationships
     project = relationship("Project", back_populates="collars", foreign_keys=[project_id])
@@ -32,4 +36,5 @@ class Collar(Base):
     __table_args__ = (
         Index("idx_collar_project_hole", "project_id", "hole_id"),
         Index("idx_collar_project_hole_type", "project_id", "hole_type"),
+        Index("idx_collar_project_hole_status", "project_id", "hole_status"),
     )

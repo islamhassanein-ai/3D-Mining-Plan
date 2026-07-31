@@ -12,7 +12,9 @@ class AssayInterval(Base):
     sample_id  = Column(String, nullable=True)
     from_depth = Column(Float, nullable=False)
     to_depth = Column(Float, nullable=False)
-    grade_value = Column(Numeric, nullable=False)
+    # NULL means "logged but never assayed" -- distinct from a genuine 0.0 g/t
+    # result. get_grade_color() maps NULL to the Unsampled category.
+    grade_value = Column(Numeric, nullable=True)
     grade_unit = Column(String, nullable=False)
     below_detection_limit = Column(Boolean, nullable=False, default=False)
     qaqc_flag = Column(String, nullable=True)

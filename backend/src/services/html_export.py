@@ -4,16 +4,47 @@ HTML assembly service for standalone export bundles.
 DB-free and dependency-free so it is unit-testable without a running
 database (T022).
 """
+import base64
 import html
 import json
 import logging
 import math
+import mimetypes
+import os
 
 logger = logging.getLogger(__name__)
 
 MAX_TOPO_POINTS  = 60_000
 MAX_EXPORT_BYTES = 60 * 1024 ** 2
 SIZE_WARN_BYTES  = 15 * 1024 ** 2
+
+APP_TITLE = "MALLOGRIM GOLD MINE"
+
+# Project logo, relative to the repo's frontend/ directory. Embedded as a
+# base64 data URI because the export's CSP allows `img-src data: blob:` only.
+LOGO_RELATIVE_PATH = os.path.join("assets", "MGM.jpeg")
+
+
+def load_logo_data_uri(frontend_dir: str) -> str:
+    """base64 data URI for the project logo, or '' when it isn't present.
+
+    An empty string leaves the <img> with an unresolvable src, which trips its
+    onerror handler and reveals the inline SVG fallback -- so a missing logo
+    file degrades to the generic mark instead of breaking the export.
+    """
+    path = os.path.join(frontend_dir, LOGO_RELATIVE_PATH)
+    if not os.path.isfile(path):
+        logger.info('Project logo not found at %s; export uses the fallback mark', path)
+        return ''
+    try:
+        with open(path, 'rb') as fh:
+            raw = fh.read()
+    except OSError as exc:
+        logger.warning('Could not read project logo %s: %s', path, exc)
+        return ''
+
+    mime = mimetypes.guess_type(path)[0] or 'image/jpeg'
+    return f'data:{mime};base64,' + base64.b64encode(raw).decode('ascii')
 
 # Sentinel-based template per contracts/api.md §3.  Substitution is always
 # done in the order listed here; the payload and bundle come last so a
@@ -146,18 +177,21 @@ def build_standalone_html(
     shell_html: str,
     css_text:   str,
     bundle_js:  str,
+    logo_data_uri: str = '',
 ) -> bytes:
     """Assemble the standalone HTML document.
 
     Sentinels are substituted once, in a fixed order (title → css → shell →
-    data → bundle).  The data and bundle are last so a project name that
-    happens to contain a sentinel string is already in the document as
-    HTML-escaped text and cannot be re-matched.
+    logo → data → bundle).  The data and bundle are last so a project name
+    that happens to contain a sentinel string is already in the document as
+    HTML-escaped text and cannot be re-matched.  The logo substitution happens
+    after the shell is inserted, since the sentinel lives inside the shell.
 
     Raises ExportTooLargeError if len(result) > MAX_EXPORT_BYTES.
     """
+    project_name = payload.get('project', {}).get('name', '')
     title = html.escape(
-        payload.get('project', {}).get('name', 'Monark 3D Export'),
+        f'{APP_TITLE} — {project_name}' if project_name else APP_TITLE,
         quote=True,
     )
     encoded_data = encode_payload(payload)
@@ -166,6 +200,7 @@ def build_standalone_html(
     doc = doc.replace('<!--MONARK_TITLE-->', title,        1)
     doc = doc.replace('/*--MONARK_CSS--*/',  css_text,     1)
     doc = doc.replace('<!--MONARK_SHELL-->', shell_html,   1)
+    doc = doc.replace('<!--MONARK_LOGO_SRC-->', logo_data_uri, 1)
     doc = doc.replace('<!--MONARK_DATA-->',  encoded_data, 1)
     doc = doc.replace('<!--MONARK_BUNDLE-->', bundle_js,   1)
 

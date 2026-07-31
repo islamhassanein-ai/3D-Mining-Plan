@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { DRILL_TUBE_RADIUS, DRILL_TUBE_RADIAL_SEGMENTS } from './grade_scale.js';
+import { subdivideIntervalAlongTrace } from './trace_geometry.js';
 
 const LITHOLOGY_COLORS = {
   SND: '#fef08a', // Yellow (Sandstone/Sand)
@@ -36,34 +38,51 @@ export class LithologyIntervals {
   render(drillholes) {
     this.clear();
 
+    // Positions are taken from the hole's own trace at the interval's
+    // ABSOLUTE from/to depths and sub-divided at every station in between, so
+    // lithology tubes follow the desurveyed curve and butt flush against
+    // their neighbours -- same treatment as assay intervals.
     this.intervalsData = [];
     for (const dh of drillholes) {
+      const trace = dh.trace || [];
       for (const lith of dh.lithologies) {
-        this.intervalsData.push({
-          id: lith.id,
-          hole_id: dh.hole_id,
-          collar_id: dh.collar_id,
-          from_depth: lith.from_depth,
-          to_depth: lith.to_depth,
-          lith_code: lith.lith_code,
-          rqd_percent: lith.rqd_percent,
-          core_recovery_percent: lith.core_recovery_percent,
-          color: getLithologyColor(lith.lith_code),
-          start: new THREE.Vector3(lith.start_pos[0], lith.start_pos[2], lith.start_pos[1]),
-          end: new THREE.Vector3(lith.end_pos[0], lith.end_pos[2], lith.end_pos[1])
-        });
+        const segments = trace.length >= 2
+          ? subdivideIntervalAlongTrace(trace, lith.from_depth, lith.to_depth)
+          : [{
+              start: new THREE.Vector3(lith.start_pos[0], lith.start_pos[2], lith.start_pos[1]),
+              end: new THREE.Vector3(lith.end_pos[0], lith.end_pos[2], lith.end_pos[1])
+            }];
+
+        for (const seg of segments) {
+          this.intervalsData.push({
+            id: lith.id,
+            hole_id: dh.hole_id,
+            collar_id: dh.collar_id,
+            from_depth: lith.from_depth,
+            to_depth: lith.to_depth,
+            lith_code: lith.lith_code,
+            rqd_percent: lith.rqd_percent,
+            core_recovery_percent: lith.core_recovery_percent,
+            color: getLithologyColor(lith.lith_code),
+            start: seg.start,
+            end: seg.end
+          });
+        }
       }
     }
 
     if (this.intervalsData.length === 0) return;
 
-    // Radius slightly larger than assay to prevent z-fighting if they overlap,
-    // e.g. 0.26 vs 0.25, or we can keep them the same. Let's make it 0.26.
-    const radius = 0.26;
-    const geometry = new THREE.CylinderGeometry(radius, radius, 1.0, 8);
+    // Sits just outside the assay tube radius so the two never z-fight where
+    // an assay interval and a lithology interval cover the same depths.
+    const radius = DRILL_TUBE_RADIUS + 0.06;
+    const geometry = new THREE.CylinderGeometry(
+      radius, radius, 1.0, DRILL_TUBE_RADIAL_SEGMENTS, 1, false
+    );
     const material = new THREE.MeshStandardMaterial({
       roughness: 0.5,
-      metalness: 0.0
+      metalness: 0.0,
+      flatShading: false
     });
 
     this.mesh = new THREE.InstancedMesh(geometry, material, this.intervalsData.length);
@@ -101,7 +120,7 @@ export class LithologyIntervals {
         const dirNormalized = direction.clone().normalize();
         quaternion.setFromUnitVectors(alignVector, dirNormalized);
       } else {
-        quaternion.setIdentity();
+        quaternion.identity();
       }
 
       // Hidden when LOD has determined its drillhole is far from the camera
@@ -121,6 +140,7 @@ export class LithologyIntervals {
 
     this.mesh.instanceMatrix.needsUpdate = true;
     if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
+    this.mesh.computeBoundingSphere();
   }
 
   setLodStates(lodStates) {

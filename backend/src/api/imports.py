@@ -491,6 +491,7 @@ def _apply_collar(db, project_id, batch_id, c_data, utm_zone_confirm,
         utm_zone=utm_zone_confirm,
         import_batch_id=batch_id,
         hole_type=c_data.get("hole_type"),
+        hole_status=c_data.get("hole_status") or "drilled",
     )
     db.add(new_collar)
     db.flush()
@@ -746,7 +747,10 @@ def _commit_combined(db, project, batch, data, current_user, utm_zone_confirm,
             sample_id=a_data.get("sample_id"),
             from_depth=a_data.get("from_depth") or 0.0,
             to_depth=a_data.get("to_depth") or 0.0,
-            grade_value=a_data.get("grade_value") or 0.0,
+            # Preserve NULL: a blank Grade column means "not assayed", which
+            # the grade scale renders as Unsampled. Coercing it to 0.0 would
+            # make it indistinguishable from a genuine barren result.
+            grade_value=a_data.get("grade_value"),
             grade_unit=a_data.get("grade_unit") or "g/t",
             below_detection_limit=False,
             qaqc_flag=None,

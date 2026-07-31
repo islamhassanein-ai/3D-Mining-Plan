@@ -158,6 +158,46 @@ export class InspectorPanel {
         margin-right: 6px;
         vertical-align: middle;
       }
+      /* Unsampled rows are visually recessive -- present and readable so the
+         depth log is continuous, but never competing with real assay data. */
+      .table-container tr.row-unsampled td {
+        color: #64748b;
+        background: repeating-linear-gradient(
+          45deg,
+          rgba(255,255,255,0.015) 0px,
+          rgba(255,255,255,0.015) 6px,
+          transparent 6px,
+          transparent 12px
+        );
+      }
+      .badge-unsampled {
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-weight: 700;
+        font-size: 0.7rem;
+        letter-spacing: 0.02em;
+        color: #94a3b8;
+        background: rgba(148, 163, 184, 0.12);
+        border: 1px dashed rgba(148, 163, 184, 0.45);
+      }
+      .badge-status {
+        padding: 2px 8px;
+        border-radius: 999px;
+        font-size: 0.65rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+      .badge-status.planned {
+        color: #67e8f9;
+        background: rgba(103, 232, 249, 0.12);
+        border: 1px dashed rgba(103, 232, 249, 0.6);
+      }
+      .badge-status.drilled {
+        color: #34d399;
+        background: rgba(52, 211, 153, 0.12);
+        border: 1px solid rgba(52, 211, 153, 0.4);
+      }
     `;
     document.head.appendChild(style);
   }
@@ -235,6 +275,9 @@ export class InspectorPanel {
           <div class="inspector-hole-title">
             <svg style="width:24px;height:24px;color:#3b82f6" viewBox="0 0 24 24"><path fill="currentColor" d="M12 2A10 10 0 0,0 2 12A10 10 0 0,0 12 22A10 10 0 0,0 22 12A10 10 0 0,0 12 2M12 4A8 8 0 0,1 20 12A8 8 0 0,1 12 20A8 8 0 0,1 4 12A8 8 0 0,1 12 4M12 6A6 6 0 0,0 6 12A6 6 0 0,0 12 18A6 6 0 0,0 18 12A6 6 0 0,0 12 6Z"/></svg>
             Hole ID: ${d.hole_id}
+            <span class="badge-status ${d.hole_status === 'planned' ? 'planned' : 'drilled'}">
+              Status: ${d.hole_status === 'planned' ? 'Planned' : 'Drilled'}
+            </span>
           </div>
           <div class="inspector-meta-grid">
             <div class="meta-box">
@@ -250,7 +293,11 @@ export class InspectorPanel {
               <div class="meta-val">${d.elevation.toFixed(2)}m</div>
             </div>
           </div>
-          <div style="font-size:0.75rem;color:#64748b;margin-top:8px;">Projection UTM Zone: ${d.utm_zone || 'N/A'}</div>
+          <div style="font-size:0.75rem;color:#64748b;margin-top:8px;">
+            Projection UTM Zone: ${d.utm_zone || 'N/A'}
+            ${d.total_depth != null ? ` &bull; End of hole: ${d.total_depth.toFixed(2)} m` : ''}
+            ${d.hole_type ? ` &bull; Type: ${d.hole_type}` : ''}
+          </div>
         </div>
 
         <div class="inspector-tabs">
@@ -306,32 +353,53 @@ export class InspectorPanel {
         </thead>
         <tbody>
           ${intervals.map(int => {
-            const isHighlighted = int.interval_id === this.highlightedIntervalId;
+            const isHighlighted = int.interval_id && int.interval_id === this.highlightedIntervalId;
             return `
-              <tr class="${isHighlighted ? 'highlighted' : ''}" data-interval-id="${int.interval_id || ''}">
+              <tr class="${isHighlighted ? 'highlighted' : ''} ${int.type === 'unsampled' ? 'row-unsampled' : ''}" data-interval-id="${int.interval_id || ''}">
                 <td style="font-weight:600">${int.from_depth.toFixed(2)}</td>
                 <td>${int.to_depth.toFixed(2)}</td>
-                <td style="text-transform:capitalize;color:#94a3b8">${int.type}</td>
-                <td>
-                  ${int.type === 'assay' ? `
-                    <span class="badge-assay" style="background:${int.color}22;color:${int.color}">
-                      ${int.below_dl ? '< ' : ''}${int.value.toFixed(3)} ${int.unit}
-                    </span>
-                    ${this.renderQaqcBadge(int.qaqc_flag)}
-                  ` : `
-                    <span class="badge-lith">
-                      <span class="color-block" style="background:${this.getLithologyColor(int.lith_code)}"></span>
-                      <strong>${int.lith_code}</strong>
-                      ${int.rqd_percent !== undefined && int.rqd_percent !== null ? `<br><span style="font-size:0.7rem;color:#94a3b8">RQD: ${int.rqd_percent}%</span>` : ''}
-                      ${int.core_recovery_percent !== undefined && int.core_recovery_percent !== null ? `<br><span style="font-size:0.7rem;color:#94a3b8">Recovery: ${int.core_recovery_percent}%</span>` : ''}
-                    </span>
-                  `}
-                </td>
+                <td style="text-transform:capitalize;color:#94a3b8">${int.type === 'unsampled' ? 'No Sample' : int.type}</td>
+                <td>${this.renderIntervalValue(int)}</td>
               </tr>
             `;
           }).join('')}
         </tbody>
       </table>
+    `;
+  }
+
+  // Value cell for one downhole-log row. Unsampled rows are their own case:
+  // they carry no grade at all, so they must never fall through to
+  // `value.toFixed(...)` -- and showing "0.000 g/t" for a zone that was never
+  // assayed would be a false geological statement.
+  renderIntervalValue(int) {
+    if (int.type === 'unsampled') {
+      return `<span class="badge-unsampled">${int.label || 'No Sample'}</span>
+              <span style="font-size:0.7rem;color:#64748b;margin-left:6px;">${(int.to_depth - int.from_depth).toFixed(2)} m</span>`;
+    }
+
+    if (int.type === 'assay') {
+      // An assay row can still be unsampled: a NULL grade, or a placeholder
+      // Sample_ID such as 'NSR' / 'No Sample'.
+      if (int.unsampled || int.value === null || int.value === undefined) {
+        return `<span class="badge-unsampled">No Sample</span>
+                ${int.sample_id ? `<br><span style="font-size:0.7rem;color:#64748b">${int.sample_id}</span>` : ''}`;
+      }
+      return `
+        <span class="badge-assay" style="background:${int.color}22;color:${int.color}">
+          ${int.below_dl ? '< ' : ''}${int.value.toFixed(3)} ${int.unit || ''}
+        </span>
+        ${this.renderQaqcBadge(int.qaqc_flag)}
+      `;
+    }
+
+    return `
+      <span class="badge-lith">
+        <span class="color-block" style="background:${this.getLithologyColor(int.lith_code)}"></span>
+        <strong>${int.lith_code}</strong>
+        ${int.rqd_percent !== undefined && int.rqd_percent !== null ? `<br><span style="font-size:0.7rem;color:#94a3b8">RQD: ${int.rqd_percent}%</span>` : ''}
+        ${int.core_recovery_percent !== undefined && int.core_recovery_percent !== null ? `<br><span style="font-size:0.7rem;color:#94a3b8">Recovery: ${int.core_recovery_percent}%</span>` : ''}
+      </span>
     `;
   }
 

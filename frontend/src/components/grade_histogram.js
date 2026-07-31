@@ -1,4 +1,4 @@
-import { GRADE_BUCKETS, getGradeBucketIndex } from '../scene/grade_scale.js';
+import { GRADE_BUCKETS, getGradeBucketIndex, UNSAMPLED_BUCKET_INDEX } from '../scene/grade_scale.js';
 
 // Grade-distribution histogram bound to the cutoff slider. Shows the assay
 // grade population split across the six canonical grade buckets, marks
@@ -71,7 +71,12 @@ export class GradeHistogram {
     for (const dh of (drillholes || [])) {
       for (const a of dh.assays) {
         const meters = Math.max(0, (a.to_depth - a.from_depth));
-        this.intervals.push({ grade: a.grade_value, unit: a.grade_unit, meters });
+        this.intervals.push({
+          grade: a.grade_value,
+          unit: a.grade_unit,
+          sampleId: a.sample_id || null,
+          meters,
+        });
       }
     }
     this.render();
@@ -90,16 +95,26 @@ export class GradeHistogram {
       return;
     }
 
-    // Bin counts per grade bucket.
+    // Bin counts per grade bucket. Unsampled intervals (bucket index -1) are
+    // excluded from the profile entirely rather than binned as 0 g/t -- they
+    // carry no assay result to profile.
     const counts = new Array(GRADE_BUCKETS.length).fill(0);
-    let aboveCount = 0, aboveMeters = 0, totalMeters = 0;
+    let aboveCount = 0, aboveMeters = 0, totalMeters = 0, sampledCount = 0;
     for (const iv of this.intervals) {
-      counts[getGradeBucketIndex(iv.grade, iv.unit)]++;
+      const idx = getGradeBucketIndex(iv.grade, iv.unit, iv.sampleId);
+      if (idx === UNSAMPLED_BUCKET_INDEX) continue;
+      counts[idx]++;
+      sampledCount++;
       totalMeters += iv.meters;
-      if (iv.grade >= this.cutoff) {
+      if (Number(iv.grade) >= this.cutoff) {
         aboveCount++;
         aboveMeters += iv.meters;
       }
+    }
+
+    if (sampledCount === 0) {
+      this.container.innerHTML = `<div class="gh-empty">No assayed intervals to profile.</div>`;
+      return;
     }
 
     const maxCount = Math.max(...counts, 1);
@@ -114,7 +129,7 @@ export class GradeHistogram {
     }).join('');
 
     // Compact axis labels (bucket upper edges), skipping some to avoid clutter.
-    const axis = ['.01', '.05', '.1', '.5', '1', '1+']
+    const axis = ['.1', '.3', '.5', '1', '3', '3+']
       .map(l => `<span>${l}</span>`).join('');
 
     const pctMeters = totalMeters > 0 ? (aboveMeters / totalMeters * 100) : 0;
@@ -124,7 +139,7 @@ export class GradeHistogram {
         <div class="gh-bars">${bars}</div>
         <div class="gh-axis">${axis}</div>
         <div class="gh-readout">
-          <span><b>${aboveCount}</b> / ${this.intervals.length} intervals</span>
+          <span><b>${aboveCount}</b> / ${sampledCount} intervals</span>
           <span><b>${aboveMeters.toFixed(1)} m</b> (${pctMeters.toFixed(0)}%) &ge; cutoff</span>
         </div>
       </div>

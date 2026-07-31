@@ -30,11 +30,13 @@ from backend.src.services.csv_service import (
 )
 from backend.src.services.html_export import (
     build_standalone_html,
+    load_logo_data_uri,
     ExportTooLargeError,
     parse_topography_csv,
     decimate_topography,
 )
-from backend.src.services.grade_coloring import get_grade_color
+from backend.src.services.grade_coloring import get_grade_color, is_unsampled
+from backend.src.services.downhole_log import compute_total_depth, extend_trace_to_depth
 
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__)
@@ -173,8 +175,6 @@ def export_pdf(
     collars = db.query(Collar).filter(Collar.project_id == project.id).all()
     collars_data = [{"hole_id": c.hole_id, "easting": c.easting, "northing": c.northing, "elevation": c.elevation} for c in collars]
 
-    from backend.src.services.grade_coloring import get_grade_color
-
     def _interp_pos(trace, depth):
         if not trace:
             return (0.0, 0.0, 0.0)
@@ -217,16 +217,27 @@ def export_pdf(
                 AssayInterval.collar_id == c.id,
                 AssayInterval.superseded_by.is_(None)
             ).all()
+            # Extend to the deepest logged interval before interpolating --
+            # otherwise intervals below the last survey station all clamp onto
+            # the trace's final point.
+            eoh = compute_total_depth(pts, [float(a.to_depth) for a in assays])
+            pts = extend_trace_to_depth(pts, eoh)
+            traces[-1]["points"] = pts
+
             for a in assays:
+                # Absolute downhole distances from the collar, so an interval
+                # under an unsampled top zone plots at its true depth.
                 start = _interp_pos(pts, float(a.from_depth))
                 end = _interp_pos(pts, float(a.to_depth))
+                unsampled = is_unsampled(a.grade_value, a.sample_id)
                 assay_segments.append({
                     "hole_id": c.hole_id,
                     "start": {"x": start[0], "y": start[1], "z": start[2]},
                     "end": {"x": end[0], "y": end[1], "z": end[2]},
-                    "grade_value": float(a.grade_value),
+                    "grade_value": None if unsampled else float(a.grade_value),
                     "grade_unit": a.grade_unit,
-                    "color": get_grade_color(float(a.grade_value), a.grade_unit)
+                    "unsampled": unsampled,
+                    "color": get_grade_color(a.grade_value, a.grade_unit, a.sample_id)
                 })
 
     wireframes = db.query(Wireframe).filter(
@@ -301,84 +312,18 @@ def export_standalone_html(
         Collar.superseded_by.is_(None)
     ).all()
 
+    # Built through the same helpers as GET /collars/{id}, so the offline
+    # viewer's downhole log matches the live inspector exactly -- including
+    # the explicit unsampled ("No Sample") rows.
+    from backend.src.api.collars import build_collar_detail_payload, load_collar_records
+
     collar_details: dict = {}
     for c in collars:
-        surveys = db.query(Survey).filter(
-            Survey.collar_id == c.id
-        ).order_by(Survey.depth).all()
-        assays = db.query(AssayInterval).filter(
-            AssayInterval.collar_id == c.id,
-            AssayInterval.superseded_by.is_(None)
-        ).order_by(AssayInterval.from_depth).all()
-        lithologies = db.query(LithologyInterval).filter(
-            LithologyInterval.collar_id == c.id,
-            LithologyInterval.superseded_by.is_(None)
-        ).order_by(LithologyInterval.from_depth).all()
-
-        merged: list = []
-        for a in assays:
-            merged.append({
-                "interval_id": str(a.id),
-                "type": "assay",
-                "from_depth": float(a.from_depth),
-                "to_depth": float(a.to_depth),
-                "value": float(a.grade_value),
-                "unit": a.grade_unit,
-                "below_dl": a.below_detection_limit,
-                "qaqc_flag": a.qaqc_flag,
-                "color": get_grade_color(a.grade_value, a.grade_unit),
-            })
-        for l in lithologies:
-            merged.append({
-                "interval_id": str(l.id),
-                "type": "lithology",
-                "from_depth": float(l.from_depth),
-                "to_depth": float(l.to_depth),
-                "lith_code": l.lith_code,
-                "rqd_percent": l.rqd_percent,
-                "core_recovery_percent": l.core_recovery_percent,
-            })
-        merged.sort(key=lambda x: (x["from_depth"], x["to_depth"]))
-
+        surveys, assays, lithologies = load_collar_records(c, db)
         # Key by UUID so the static viewer can look up by collar_id from the scene data
-        collar_details[str(c.id)] = {
-            "id": str(c.id),
-            "hole_id": c.hole_id,
-            "easting": float(c.easting),
-            "northing": float(c.northing),
-            "elevation": float(c.elevation),
-            "utm_zone": c.utm_zone,
-            "surveys": [
-                {"id": str(s.id), "depth": float(s.depth),
-                 "dip": float(s.dip), "azimuth": float(s.azimuth)}
-                for s in surveys
-            ],
-            "assays": [
-                {
-                    "id": str(a.id),
-                    "from_depth": float(a.from_depth),
-                    "to_depth": float(a.to_depth),
-                    "grade_value": float(a.grade_value),
-                    "grade_unit": a.grade_unit,
-                    "below_detection_limit": a.below_detection_limit,
-                    "qaqc_flag": a.qaqc_flag,
-                    "color": get_grade_color(a.grade_value, a.grade_unit),
-                }
-                for a in assays
-            ],
-            "lithologies": [
-                {
-                    "id": str(l.id),
-                    "from_depth": float(l.from_depth),
-                    "to_depth": float(l.to_depth),
-                    "lith_code": l.lith_code,
-                    "rqd_percent": l.rqd_percent,
-                    "core_recovery_percent": l.core_recovery_percent,
-                }
-                for l in lithologies
-            ],
-            "merged_intervals": merged,
-        }
+        collar_details[str(c.id)] = build_collar_detail_payload(
+            c, surveys, assays, lithologies
+        )
 
     # 3. Topography (decimated CSV → [[e, n, el], …])
     topo: dict = {"included": False, "point_count": 0, "points": []}
@@ -467,7 +412,10 @@ def export_standalone_html(
 
     # 7. Build HTML document
     try:
-        html_bytes = build_standalone_html(payload, shell_html, css_text, bundle_js)
+        html_bytes = build_standalone_html(
+            payload, shell_html, css_text, bundle_js,
+            logo_data_uri=load_logo_data_uri(_FRONTEND_DIR),
+        )
     except ExportTooLargeError as exc:
         raise HTTPException(status_code=413, detail=str(exc))
 

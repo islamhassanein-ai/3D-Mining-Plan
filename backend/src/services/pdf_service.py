@@ -1,10 +1,26 @@
 import io
+import logging
 import math
+import os
 from typing import List, Dict, Any, Optional, Tuple
 from reportlab.pdfgen import canvas
 from reportlab.lib import colors
 
-from backend.src.services.grade_coloring import GRADE_BUCKETS
+from backend.src.services.grade_coloring import GRADE_BUCKETS, UNSAMPLED_COLOR, UNSAMPLED_LABEL
+from backend.src.services.html_export import APP_TITLE, LOGO_RELATIVE_PATH
+
+logger = logging.getLogger(__name__)
+
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
+    os.path.abspath(__file__)
+))))
+_FRONTEND_DIR = os.path.join(_REPO_ROOT, "frontend")
+
+
+def _project_logo_path() -> Optional[str]:
+    """Absolute path to the project logo, or None when it isn't installed."""
+    path = os.path.join(_FRONTEND_DIR, LOGO_RELATIVE_PATH)
+    return path if os.path.isfile(path) else None
 
 
 def _plane_normal(plane_type: str, azimuth_deg: float) -> Tuple[float, float, float]:
@@ -245,12 +261,26 @@ def _render_section_sheet(
     c.rect(20, 20, PAGE_W - 40, PAGE_H - 40, fill=False, stroke=True)
 
     # --- Title strip ---------------------------------------------------
+    # Logo sits left of the title block when frontend/assets/MGM.jpeg exists;
+    # the text simply shifts back to the margin when it doesn't.
+    text_x = 34
+    logo_path = _project_logo_path()
+    if logo_path:
+        try:
+            c.drawImage(
+                logo_path, 34, PAGE_H - 62, width=30, height=30,
+                preserveAspectRatio=True, mask='auto',
+            )
+            text_x = 72
+        except Exception as exc:  # noqa: BLE001 - a bad logo must not fail the report
+            logger.warning("Could not draw project logo in PDF: %s", exc)
+
     c.setFillColor(INK)
     c.setFont("Helvetica-Bold", 15)
-    c.drawString(34, PAGE_H - 44, f"{project_name}")
+    c.drawString(text_x, PAGE_H - 44, APP_TITLE)
     c.setFont("Helvetica", 10)
     c.setFillColor(SUBTLE)
-    c.drawString(34, PAGE_H - 58, "Geological Cross-Section")
+    c.drawString(text_x, PAGE_H - 58, f"{project_name} — Geological Cross-Section")
     c.setFont("Helvetica-Oblique", 9)
     c.drawRightString(PAGE_W - 34, PAGE_H - 44, section_name)
     c.setStrokeColor(INK)
@@ -463,6 +493,15 @@ def _render_section_sheet(
         c.setFillColor(INK)
         c.drawString(lx + 34, cur - 1, f"{label}")
         cur -= 15
+
+    # Unsampled is not a grade bucket -- it is the "never assayed" category,
+    # kept visually separate so a gap never reads as a barren result.
+    c.setFillColor(colors.HexColor(UNSAMPLED_COLOR))
+    c.setStrokeColor(colors.HexColor("#d1d5db")); c.setLineWidth(0.4)
+    c.rect(lx + 14, cur - 3, 14, 9, fill=True, stroke=True)
+    c.setFillColor(INK)
+    c.drawString(lx + 34, cur - 1, UNSAMPLED_LABEL)
+    cur -= 15
 
     # Title block (drafting-style, bottom of panel)
     tb_y = ly + 96
