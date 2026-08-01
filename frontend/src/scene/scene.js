@@ -21,6 +21,7 @@ import { DepthPlanRenderer } from './depth_plan_renderer.js';
 import { LodManager } from './lod_manager.js';
 import { OrientationGizmo } from './orientation_gizmo.js';
 import { CoordinateFlag } from './coordinate_flag.js';
+import { FocusHighlight } from './focus_highlight.js';
 import { BoreholeLabels } from './borehole_labels.js';
 import { TrenchLabels } from './trench_labels.js';
 import { ImportPanel } from '../components/import_panel.js';
@@ -33,6 +34,7 @@ import { DepthPlannerPanel } from '../components/depth_planner_panel.js';
 import { QaqcPanel } from '../components/qaqc_panel.js';
 import { LayerTogglePanel } from '../components/layer_toggles.js';
 import { SceneLegend } from '../components/scene_legend.js';
+import { SearchBar } from '../components/search_bar.js';
 import { ApiClient } from '../services/api_client.js';
 import { computeProjectSummary } from '../services/project_summary.js';
 import { ApiDataSource, ShareTokenDataSource } from '../services/data_source.js';
@@ -112,6 +114,9 @@ export function init3DViewport(container, options = {}) {
   // proposal the user is authoring, not project data that was loaded.
   const depthPlanRenderer = new DepthPlanRenderer(scene);
   const coordinateFlag = new CoordinateFlag(scene);
+  const focusHighlight = new FocusHighlight(scene);
+  // Lets the inspector's row selection point at a sample in 3D.
+  assaysRenderer.focusHighlight = focusHighlight;
   const boreholeLabelsRenderer = new BoreholeLabels(scene);
   const trenchLabelsRenderer = new TrenchLabels(scene);
 
@@ -161,9 +166,17 @@ export function init3DViewport(container, options = {}) {
   // 12. Animation render loop
   let animationFrameId = null;
   let hover = null;
+  let lastFrameTime = performance.now();
   function animate() {
     animationFrameId = requestAnimationFrame(animate);
+    const now = performance.now();
+    // Clamped: a backgrounded tab resumes with a huge gap, which would skip
+    // the focus animation straight to its end.
+    const delta = Math.min((now - lastFrameTime) / 1000, 0.05);
+    lastFrameTime = now;
+
     controls.update();
+    focusHighlight.update(delta, camera);
     lodManager.update();
     boreholeLabelsRenderer.update(camera);
     trenchLabelsRenderer.update(camera);
@@ -184,23 +197,29 @@ export function init3DViewport(container, options = {}) {
   // variables, but the WebGL viewport has no cascade -- background, fill
   // light and grid have to be set explicitly. Grade colours are deliberately
   // untouched: they encode data and must not shift with the theme.
+  const SCENE_THEMES = {
+    dark:     { bg: 0x0b0f19, ambient: 0.60, fill: 0x3b82f6, fillIntensity: 0.30, grid: [0x374151, 0x1f2937] },
+    light:    { bg: 0xe6ecf4, ambient: 0.85, fill: 0x3b82f6, fillIntensity: 0.12, grid: [0x94a3b8, 0xcbd5e1] },
+    // Neutral charcoal with a white fill light instead of a blue one: any
+    // tint in the fill lands on every grade colour at once and shifts how it
+    // reads, which defeats the point of a reference-grade view.
+    graphite: { bg: 0x17171a, ambient: 0.66, fill: 0xffffff, fillIntensity: 0.14, grid: [0x3f4046, 0x2a2b2f] },
+  };
+
   function setTheme(theme) {
-    const light = theme === 'light';
-    scene.background = new THREE.Color(light ? 0xe6ecf4 : 0x0b0f19);
+    const cfg = SCENE_THEMES[theme] || SCENE_THEMES.dark;
+    scene.background = new THREE.Color(cfg.bg);
     // On a pale background the cool fill light muddies the surface, and the
     // ambient has to come down or everything flattens out.
-    ambientLight.intensity = light ? 0.85 : 0.6;
-    dirLight2.intensity = light ? 0.12 : 0.3;
+    ambientLight.intensity = cfg.ambient;
+    dirLight2.color.setHex(cfg.fill);
+    dirLight2.intensity = cfg.fillIntensity;
 
     const wasVisible = gridHelper.visible;
     scene.remove(gridHelper);
     gridHelper.geometry.dispose();
     gridHelper.material.dispose();
-    gridHelper = new THREE.GridHelper(
-      5000, 100,
-      light ? 0x94a3b8 : 0x374151,
-      light ? 0xcbd5e1 : 0x1f2937
-    );
+    gridHelper = new THREE.GridHelper(5000, 100, cfg.grid[0], cfg.grid[1]);
     gridHelper.position.y = 0;
     gridHelper.visible = wasVisible;
     gridHelper.userData.excludeFromFit = true;
@@ -223,6 +242,7 @@ export function init3DViewport(container, options = {}) {
     structuralReadingsRenderer,
     depthPlanRenderer,
     coordinateFlag,
+    focusHighlight,
     boreholeLabelsRenderer,
     trenchLabelsRenderer,
     sceneLoader,
@@ -243,6 +263,7 @@ export function init3DViewport(container, options = {}) {
       structuralReadingsRenderer.clear();
       depthPlanRenderer.clear();
       coordinateFlag.dispose();
+      focusHighlight.dispose();
       boreholeLabelsRenderer.clear();
       trenchLabelsRenderer.clear();
       renderer.dispose();
@@ -286,6 +307,7 @@ window.DepthPlannerPanel = DepthPlannerPanel;
 window.QaqcPanel = QaqcPanel;
 window.LayerTogglePanel = LayerTogglePanel;
 window.SceneLegend = SceneLegend;
+window.SearchBar = SearchBar;
 window.ApiClient = ApiClient;
 window.ExportPanel = ExportPanel;
 window.computeProjectSummary = computeProjectSummary;

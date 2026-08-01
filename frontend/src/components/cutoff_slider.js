@@ -1,17 +1,65 @@
 import { GRADE_BUCKETS } from '../scene/grade_scale.js';
 
-// The range track is painted with the project's own six grade colours rather
-// than a generic accent, so the thumb's position reads directly as "everything
-// left of here is hidden" against the same scale used in the 3D view and the
-// legend. Hard colour stops (not a smooth blend) because the buckets are
-// discrete -- a gradient would imply grade is continuous across them.
-function buildTrackGradient() {
-  const stops = [];
+// The cutoff slider is piecewise-linear in grade: every bucket gets an equal
+// share of the track, and the value moves linearly *within* each share.
+//
+// The point is that colour and number always agree. Wherever the thumb sits on
+// the yellow band the readout is between 0.50 and 1.00, and it reads exactly
+// 1.00 at the yellow/red boundary -- because the boundary IS the boundary.
+//
+// A track linear in grade would satisfy that too, but only in theory: with the
+// scale running to 10 g/t, the 0-1 range where nearly every cutoff actually
+// sits would be squeezed into a tenth of the width, and 0.10/0.30/0.50 would
+// land within a few pixels of each other. Equal shares put the resolution
+// where the decisions are made, and cost nothing in correctness.
+//
+// The top bucket is open-ended, so its share maps its lower bound up to MAX.
+const SLIDER_STEPS = 1000;   // internal position units on the range input
+const MAX_GRADE = 10.0;
+
+// Upper bound used for a bucket when mapping, treating the open top bucket as
+// ending at MAX_GRADE.
+function bucketUpper(i) {
+  const to = GRADE_BUCKETS[i].to;
+  return to === null ? MAX_GRADE : to;
+}
+
+// position (0..1 across the track) -> grade
+function positionToValue(pos) {
   const n = GRADE_BUCKETS.length;
-  GRADE_BUCKETS.forEach((b, i) => {
-    const from = (i / n) * 100;
-    const to = ((i + 1) / n) * 100;
-    stops.push(`${b.color} ${from}%`, `${b.color} ${to}%`);
+  const clamped = Math.min(1, Math.max(0, pos));
+  if (clamped >= 1) return MAX_GRADE;
+  const scaled = clamped * n;
+  const i = Math.min(n - 1, Math.floor(scaled));
+  const frac = scaled - i;
+  return GRADE_BUCKETS[i].from + frac * (bucketUpper(i) - GRADE_BUCKETS[i].from);
+}
+
+// grade -> position (0..1 across the track)
+function valueToPosition(value) {
+  const n = GRADE_BUCKETS.length;
+  const v = Math.min(MAX_GRADE, Math.max(0, value));
+  for (let i = 0; i < n; i++) {
+    const from = GRADE_BUCKETS[i].from;
+    const to = bucketUpper(i);
+    if (v <= to || i === n - 1) {
+      const span = to - from;
+      const frac = span > 0 ? (v - from) / span : 0;
+      return (i + Math.min(1, Math.max(0, frac))) / n;
+    }
+  }
+  return 1;
+}
+
+// Hard colour stops, one equal band per bucket -- matching the mapping above,
+// which is what makes the band under the thumb the bucket the number is in.
+// Not a smooth blend: the buckets are discrete, and a gradient would imply
+// grade is continuous across them.
+function buildTrackGradient() {
+  const n = GRADE_BUCKETS.length;
+  const stops = [];
+  GRADE_BUCKETS.forEach((bucket, i) => {
+    stops.push(`${bucket.color} ${(i / n) * 100}%`, `${bucket.color} ${((i + 1) / n) * 100}%`);
   });
   return `linear-gradient(90deg, ${stops.join(', ')})`;
 }
@@ -20,10 +68,12 @@ export class CutoffSlider {
   constructor(container, onChangeCallback) {
     this.container = typeof container === 'string' ? document.getElementById(container) : container;
     this.onChange = onChangeCallback;
-    this.value = 0.0;
+    // Opens at the bottom of the first real grade bucket rather than 0, so
+    // the initial view is already free of the sub-0.10 background samples
+    // that otherwise dominate a trace visually while saying nothing.
+    this.value = 0.1;
     this.min = 0.0;
-    this.max = 10.0;
-    this.step = 0.1;
+    this.max = MAX_GRADE;
 
     this.init();
   }
@@ -31,6 +81,10 @@ export class CutoffSlider {
   init() {
     this.injectStyles();
     this.render();
+    // The opening value is a real filter, not just a label -- push it to the
+    // scene now, or the view shows every background sample while the readout
+    // claims a 0.10 cutoff.
+    if (this.onChange) this.onChange(this.value);
   }
 
   injectStyles() {
@@ -78,9 +132,8 @@ export class CutoffSlider {
         min-width: 0;
         -webkit-appearance: none;
         appearance: none;
-        background: ${buildTrackGradient()};
-        height: 6px;
-        border-radius: 3px;
+        height: 7px;
+        border-radius: 4px;
         outline: none;
         border: 1px solid rgba(0,0,0,0.45);
         box-shadow: inset 0 1px 2px rgba(0,0,0,0.5);
@@ -107,13 +160,33 @@ export class CutoffSlider {
         box-shadow: 0 0 7px rgba(0,0,0,0.65);
         cursor: pointer;
       }
-      .cutoff-input-row input[type="range"]::-moz-range-track {
-        height: 6px;
-        border-radius: 3px;
-        background: ${buildTrackGradient()};
-      }
       .cutoff-input-row input[type="range"]::-webkit-slider-thumb:hover {
         transform: scale(1.2);
+      }
+      .cutoff-scale {
+        position: relative;
+        height: 13px;
+        margin-top: -2px;
+      }
+      .cutoff-scale .tick {
+        position: absolute;
+        top: 0;
+        transform: translateX(-50%);
+        font-size: 0.6rem;
+        line-height: 1;
+        color: var(--text-faint, #64748b);
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+      }
+      .cutoff-scale .tick::before {
+        content: '';
+        position: absolute;
+        left: 50%;
+        top: -4px;
+        width: 1px;
+        height: 3px;
+        background: currentColor;
+        opacity: 0.6;
       }
       .cutoff-note {
         font-size: 0.65rem;
@@ -149,6 +222,26 @@ export class CutoffSlider {
     document.head.appendChild(style);
   }
 
+  /**
+   * A label at every bucket boundary. They are evenly spaced because the
+   * track is -- which is the whole point: 0.10, 0.30, 0.50, 1.00 and 3.00 all
+   * get equal room instead of piling up in the first few pixels.
+   */
+  renderTicks() {
+    const n = GRADE_BUCKETS.length;
+    const out = [];
+    for (let i = 0; i <= n; i++) {
+      const value = i === 0 ? 0 : (i === n ? MAX_GRADE : GRADE_BUCKETS[i].from);
+      const pct = (i / n) * 100;
+      // Nudge the outermost labels inward so they aren't clipped by the panel.
+      const align = i === 0 ? 'left:0;transform:none;'
+        : i === n ? 'right:0;left:auto;transform:none;'
+        : `left:${pct}%;`;
+      out.push(`<span class="tick" style="${align}">${formatTick(value)}</span>`);
+    }
+    return out.join('');
+  }
+
   render() {
     this.container.innerHTML = `
       <div class="cutoff-container">
@@ -157,15 +250,14 @@ export class CutoffSlider {
           <span class="cutoff-value" id="cutoff-display">${this.value.toFixed(2)} g/t</span>
         </div>
         <div class="cutoff-input-row">
-          <input type="range" id="cutoff-range" min="${this.min}" max="${this.max}" step="${this.step}" value="${this.value}">
+          <input type="range" id="cutoff-range" min="0" max="${SLIDER_STEPS}" step="1"
+                 value="${Math.round(valueToPosition(this.value) * SLIDER_STEPS)}"
+                 style="background:${buildTrackGradient()}">
           <input type="number" id="cutoff-number" class="cutoff-number-input"
-                 min="${this.min}" max="${this.max}" step="${this.step}" value="${this.value.toFixed(2)}">
+                 min="${this.min}" max="${this.max}" step="0.05" value="${this.value.toFixed(2)}">
         </div>
-        <div class="cutoff-limits">
-          <span>${this.min.toFixed(2)} g/t</span>
-          <span>${this.max.toFixed(2)} g/t</span>
-        </div>
-        <p class="cutoff-note">Samples below the cutoff are hidden in the 3D view.</p>
+        <div class="cutoff-scale">${this.renderTicks()}</div>
+        <p class="cutoff-note">Samples below the cutoff are hidden in the 3D view. Track colours mark where each grade bucket falls.</p>
       </div>
     `;
 
@@ -177,15 +269,25 @@ export class CutoffSlider {
     const numberInput = this.container.querySelector('#cutoff-number');
     const display     = this.container.querySelector('#cutoff-display');
 
-    const apply = (val) => {
+    const apply = (val, { fromRange = false } = {}) => {
       this.value = Math.max(this.min, Math.min(this.max, Number(val)));
-      rangeInput.value  = this.value;
+      // Dragging the range must not fight the thumb by writing the position
+      // back mid-gesture; typing a number does need the thumb to follow.
+      if (!fromRange) {
+        rangeInput.value = Math.round(valueToPosition(this.value) * SLIDER_STEPS);
+      }
       numberInput.value = this.value.toFixed(2);
       if (display) display.textContent = `${this.value.toFixed(2)} g/t`;
       if (this.onChange) this.onChange(this.value);
     };
 
-    rangeInput.addEventListener('input',  (e) => apply(e.target.value));
+    rangeInput.addEventListener('input', (e) => {
+      const raw = positionToValue(Number(e.target.value) / SLIDER_STEPS);
+      // Round to a sensible precision for the readout: fine near zero, coarser
+      // up top, where 0.01 steps would be noise.
+      const grade = raw < 1 ? Math.round(raw * 100) / 100 : Math.round(raw * 20) / 20;
+      apply(grade, { fromRange: true });
+    });
 
     // Commit on blur (so partial typing like "0." doesn't fire mid-entry)
     numberInput.addEventListener('change', (e) => {
@@ -203,8 +305,15 @@ export class CutoffSlider {
     const rangeInput  = this.container.querySelector('#cutoff-range');
     const numberInput = this.container.querySelector('#cutoff-number');
     const display     = this.container.querySelector('#cutoff-display');
-    if (rangeInput)  rangeInput.value  = this.value;
+    if (rangeInput)  rangeInput.value  = Math.round(valueToPosition(this.value) * SLIDER_STEPS);
     if (numberInput) numberInput.value = this.value.toFixed(2);
     if (display)     display.textContent = `${this.value.toFixed(2)} g/t`;
   }
+}
+
+// Bucket boundaries print as given (0.10, 0.30, 3.00); whole numbers stay bare.
+function formatTick(value) {
+  if (value === 0) return '0';
+  if (Number.isInteger(value)) return String(value);
+  return value.toFixed(2);
 }

@@ -32,8 +32,10 @@ const LEGEND_LAYERS = [
   },
   {
     key: 'planned',
+    // White collar marker over a black dashed trace -- see drillhole_traces.js
+    // for why the marker is not red.
     label: 'Planned Holes',
-    color: '#ff2b2b',
+    color: '#ffffff',
     dashed: true,
     objects: (v) => [
       v.tracesRenderer && v.tracesRenderer.plannedGroup,

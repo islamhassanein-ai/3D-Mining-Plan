@@ -60,8 +60,16 @@ drilled holes, with a **`Status`** column.
 
 | `Status` value | Result |
 | --- | --- |
-| `planned`, `proposed`, `design`, `target` | Rendered as a planned hole |
-| `drilled`, `complete`, `completed`, or blank/absent | Rendered as a drilled hole |
+| `planned`, `plan`, `proposed`, `design`, `target`, `true`, `yes`, `1` | Rendered as a planned hole |
+| `drilled`, `drill`, `complete`, `completed`, `existing`, `actual`, `false`, `no`, `0`, or blank/absent | Rendered as a drilled hole |
+
+**There are only two statuses.** Everything in the first row is an alias for the
+same thing — `proposed` and `planned` are identical, and so are `design` and
+`target`; they exist so a collar file exported from someone else's software
+imports without being edited first. The database stores `planned` either way,
+and the viewer draws them identically. If you want a distinction between "we
+intend to drill this" and "this is a formal design", it has to be a separate
+column, not a `Status` value.
 
 Minimal collar CSV — the only difference from a drilled hole is the last column:
 
@@ -85,9 +93,11 @@ AAPL001,,,,,,,,,,AAPL001-T02,60,72,2.80
 `sample_data/10_collar_with_planned.csv` are working examples — import either
 via **Import Drillholes (CSV)**.
 
-**How they look.** A planned hole is drawn as a bright red collar sphere with a
-black dashed trace beneath it, so it can never be mistaken for a drilled hole
-at a glance. Give a hole a dip and azimuth (and `Total_Length`) and its
+**How they look.** A planned hole is drawn as a white collar marker with a black
+dashed trace beneath it, so it can never be mistaken for a drilled hole at a
+glance. The marker is white rather than a bright colour on purpose: white is
+the only high-contrast colour the data palette never uses, so it can't be
+misread as a grade result. Give a hole a dip and azimuth (and `Total_Length`) and its
 trajectory is desurveyed exactly like a real one, which is the point — you are
 looking at where the hole would actually go, not a vertical stick.
 
