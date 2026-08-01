@@ -12,7 +12,7 @@ from backend.src.models.collar import Collar
 from backend.src.api.dependencies import get_viewer_context, ViewerContext
 from backend.src.services import share_link as share_link_service
 from backend.src.api.scene import get_project_scene
-from backend.src.api.collars import get_collar_details, get_true_thickness
+from backend.src.api.collars import get_collar_details
 from backend.src.api.project_access import get_owned_project_or_404 as get_project_or_404
 
 # Router for project owners to manage links
@@ -148,32 +148,3 @@ def get_shared_collar(
     raise HTTPException(status_code=404, detail="Drillhole not found")
     
   return get_collar_details(collar_id=collar_id, db=db, current_user=None)
-
-@share_router.get("/{token}/collars/{collar_id}/true-thickness")
-def get_shared_true_thickness(
-  token: str,
-  collar_id: str,
-  interval_id: str,
-  dip_direction: float,
-  dip: float,
-  db: Session = Depends(get_db),
-  viewer_ctx: ViewerContext = Depends(get_viewer_context)
-):
-  """Calculates JORC true thickness for a valid share token."""
-  try:
-    c_uuid = uuid.UUID(collar_id)
-  except ValueError:
-    raise HTTPException(status_code=404, detail="Drillhole not found")
-    
-  collar = db.query(Collar).filter(Collar.id == c_uuid, Collar.project_id == viewer_ctx.project_id).first()
-  if not collar or collar.superseded_by is not None:
-    raise HTTPException(status_code=404, detail="Drillhole not found")
-    
-  return get_true_thickness(
-    collar_id=collar_id,
-    interval_id=interval_id,
-    dip_direction=dip_direction,
-    dip=dip,
-    db=db,
-    current_user=None
-  )

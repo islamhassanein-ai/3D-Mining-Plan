@@ -173,22 +173,6 @@ export const ApiClient = {
     return res.json();
   },
 
-  async getTrueThickness(collarId, intervalId, dipDirection, dip) {
-    const params = new URLSearchParams({
-      interval_id: intervalId,
-      dip_direction: dipDirection,
-      dip: dip
-    });
-    const res = await fetch(
-      `${API_BASE_URL}/collars/${collarId}/true-thickness?${params.toString()}`,
-      {
-        headers: getHeaders()
-      }
-    );
-    if (!res.ok) throw new Error('Failed to fetch true thickness');
-    return res.json();
-  },
-
   // Share Links (Owner Management)
   async createShareLink(projectId) {
     const res = await fetch(`${API_BASE_URL}/projects/${projectId}/share-links`, {
@@ -246,19 +230,6 @@ export const ApiClient = {
   async getSharedCollar(token, collarId) {
     const res = await fetch(`${API_BASE_URL}/share/${token}/collars/${collarId}`);
     if (!res.ok) throw new Error('Failed to fetch shared collar details');
-    return res.json();
-  },
-
-  async getSharedTrueThickness(token, collarId, intervalId, dipDirection, dip) {
-    const params = new URLSearchParams({
-      interval_id: intervalId,
-      dip_direction: dipDirection,
-      dip: dip
-    });
-    const res = await fetch(
-      `${API_BASE_URL}/share/${token}/collars/${collarId}/true-thickness?${params.toString()}`
-    );
-    if (!res.ok) throw new Error('Failed to calculate true thickness');
     return res.json();
   },
 
