@@ -14,6 +14,24 @@ const HELPER_TYPES = new Set(['GridHelper', 'AxesHelper', 'Box3Helper']);
 // make a layer toggle stutter.
 const SAMPLES_PER_OBJECT = 240;
 
+// Breathing room so nothing sits flush against the viewport edge.
+const FIT_PADDING = 1.06;
+
+// Re-centre / re-solve rounds. Centring and distance interact, so a couple of
+// rounds settle it; the distance search inside each is exact, not iterative.
+const FIT_ROUNDS = 3;
+
+// Bisection steps per round. 40 halvings take any starting bracket to far
+// below single-pixel precision, and each step is a few multiplies per point.
+const BISECTION_STEPS = 40;
+
+// Closest a sampled point may sit to the camera, in metres. Keeps the
+// bisection off the singularity where a point crosses the camera plane.
+const MIN_CAMERA_DEPTH = 0.5;
+
+// Floor for the camera distance, for a scene that is effectively a point.
+const MIN_CAMERA_DISTANCE = 15;
+
 /**
  * Every point in the project whose elevation was actually surveyed on the
  * ground: drill collars, trench channel samples, and structural stations.
@@ -152,10 +170,24 @@ export class SceneLoader {
     let hasPoints = false;
 
     this.eachFittableObject((obj) => {
-      if (!obj.geometry.boundingBox) obj.geometry.computeBoundingBox();
-      if (!obj.geometry.boundingBox) return;
+      let box;
 
-      const box = obj.geometry.boundingBox.clone().applyMatrix4(obj.matrixWorld);
+      if (obj.isInstancedMesh) {
+        // An InstancedMesh's geometry is one unit primitive at the local
+        // origin; where the copies actually are lives in the per-instance
+        // matrices. Reading geometry.boundingBox therefore places the whole
+        // layer at (0,0,0), which on a UTM site drags the bounds out by
+        // millions of metres. InstancedMesh.computeBoundingBox walks the
+        // instance matrices, which is the only correct source here.
+        if (!obj.boundingBox) obj.computeBoundingBox();
+        if (!obj.boundingBox) return;
+        box = obj.boundingBox.clone().applyMatrix4(obj.matrixWorld);
+      } else {
+        if (!obj.geometry.boundingBox) obj.geometry.computeBoundingBox();
+        if (!obj.geometry.boundingBox) return;
+        box = obj.geometry.boundingBox.clone().applyMatrix4(obj.matrixWorld);
+      }
+
       if (!Number.isFinite(box.min.x) || !Number.isFinite(box.max.x)) return;
       bbox.union(box);
       hasPoints = true;
@@ -221,6 +253,21 @@ export class SceneLoader {
     const vertex = new THREE.Vector3();
 
     this.eachFittableObject((obj) => {
+      // Instanced layers (lithology) carry their real positions in the
+      // per-instance matrices, not in the geometry -- see visibleBounds. The
+      // translation of each instance matrix is a good representative sample:
+      // one point per interval, which is exactly the granularity wanted.
+      if (obj.isInstancedMesh) {
+        const matrix = new THREE.Matrix4();
+        const stride = Math.max(1, Math.ceil(obj.count / SAMPLES_PER_OBJECT));
+        for (let i = 0; i < obj.count; i += stride) {
+          obj.getMatrixAt(i, matrix);
+          vertex.setFromMatrixPosition(matrix).applyMatrix4(obj.matrixWorld);
+          if (Number.isFinite(vertex.x)) points.push(vertex.clone());
+        }
+        return;
+      }
+
       const position = obj.geometry.getAttribute('position');
       if (!position || !position.count) return;
 
@@ -245,39 +292,31 @@ export class SceneLoader {
    * Frames the visible scene and records the result as the "home" camera, so
    * Reset Camera returns here rather than to a fixed angle.
    *
-   * The old fit was roughly 1.8x too far out: it padded the largest single
-   * axis by 1.5x, then placed the camera at (0.7, 0.7, 0.7) x that distance,
-   * whose length is another 1.21x again. This solves for the exact distance
-   * instead.
+   * Two things make this harder than it looks.
    *
-   * It frames a sample of the real vertices (visiblePoints) rather than the
-   * bounding box, because the box is not where the model is: its lower
-   * corners span the full horizontal footprint at the depth of the deepest
-   * hole, so they project below any actual geometry and push everything
-   * visible up the screen.
+   * First, the model is not its bounding box. Framing the box's eight corners
+   * centres an empty box: the lower corners span the whole horizontal
+   * footprint at the depth of the deepest hole, so they project below anything
+   * real and push the visible geometry up the screen (measured at NDC Y
+   * centred on +0.32). So it frames a sample of the actual vertices instead.
    *
-   * For each sampled point: with the camera at `aim + eye * t` looking back
-   * down `eye`, a point's offset q from the aim sits at depth (t - q.eye)
-   * with screen offsets q.right and q.up. Keeping it inside the frustum needs
+   * Second, the obvious iteration -- project, measure how much of the frame is
+   * filled, multiply the distance by that -- does not converge. Halving the
+   * distance more than doubles the projected size, because the points nearest
+   * the camera dominate, so the correction overshoots and the estimate
+   * oscillates: on one project it ran 337 -> 234 -> 310 -> 241 -> 311 -> 233,
+   * and the framing you got depended on which pass it stopped at. That is why
+   * some projects looked well framed and others sat at 40% of the viewport.
    *
-   *     t >= q.eye + |q.right| / tan(fovX/2)
-   *     t >= q.eye + |q.up|    / tan(fovY/2)
-   *
-   * and the first estimate is the largest such t. Solving per point (rather
-   * than per axis, or against a circumscribed bounding sphere) is what makes
-   * the framing tight from the isometric angle -- an axis-aligned estimate is
-   * wrong the moment the view direction isn't axis-aligned, and a bounding
-   * sphere always overshoots on a site that is wide and shallow.
+   * Bisection is used instead. "Does everything fit at distance d" is
+   * monotonic -- if it fits at d it fits at anything larger -- so the smallest
+   * fitting distance can be found by bisection, which always converges. The
+   * aim point is re-centred between rounds, since centring and distance
+   * interact.
    */
   fitCameraToData() {
     const points = this.visiblePoints();
     if (!points.length) return;
-
-    // Centroid of the sample, as the starting aim. The refine loop moves it
-    // onto the projected centre from there.
-    const center = new THREE.Vector3();
-    for (const point of points) center.add(point);
-    center.divideScalar(points.length);
 
     const camera = this.controls.camera;
     const eye = SceneLoader.ISO_EYE;
@@ -290,67 +329,102 @@ export class SceneLoader {
     const right = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), eye).normalize();
     const up = new THREE.Vector3().crossVectors(eye, right).normalize();
 
-    // First guess: the distance at which every sample fits under a *parallel*
-    // projection. It always overshoots, which is what we want -- the refine
-    // loop below only ever pulls in.
-    const target = center.clone();
-    const q = new THREE.Vector3();
-    let distance = 0;
-    for (const point of points) {
-      q.subVectors(point, target);
-      const along = q.dot(eye);
-      distance = Math.max(
-        distance,
-        along + Math.abs(q.dot(right)) / tanX,
-        along + Math.abs(q.dot(up)) / tanY
-      );
-    }
-    if (!Number.isFinite(distance) || distance <= 0) distance = 40;
+    // Start aiming at the centroid of the sample.
+    const target = new THREE.Vector3();
+    for (const point of points) target.add(point);
+    target.divideScalar(points.length);
 
-    // Refine against the real perspective projection. A parallel estimate is
-    // wrong in two ways that both show on screen: near points project wider
-    // than far ones, so the fit is looser than it needs to be, and the
-    // silhouette's centre is not the world centre, so the model sits off to
-    // one side. Each pass re-centres the aim on the projected midpoint and
-    // rescales the distance by how much of the frame is actually filled.
-    // Four passes converge to within a fraction of a percent.
-    const projected = new THREE.Vector3();
-    for (let pass = 0; pass < 4; pass++) {
-      camera.position.copy(target).addScaledVector(eye, distance);
-      camera.lookAt(target);
-      camera.updateMatrixWorld(true);
-      camera.updateProjectionMatrix();
+    // Per-point offsets in camera axes, recomputed whenever the aim moves.
+    // With these, projecting at a distance d is pure arithmetic -- no matrix
+    // per point per bisection step, which is what keeps this cheap enough to
+    // run on every layer toggle.
+    const count = points.length;
+    const along = new Float64Array(count);
+    const across = new Float64Array(count);
+    const vertical = new Float64Array(count);
+    const offset = new THREE.Vector3();
 
-      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-      let behind = false;
-      for (const point of points) {
-        projected.copy(point).project(camera);
-        // A point behind the near plane projects nonsensically; if that
-        // happens the estimate is already inside the model, so stop refining
-        // and keep the last good distance.
-        if (projected.z > 1) { behind = true; break; }
-        if (projected.x < minX) minX = projected.x;
-        if (projected.x > maxX) maxX = projected.x;
-        if (projected.y < minY) minY = projected.y;
-        if (projected.y > maxY) maxY = projected.y;
+    const projectOffsets = () => {
+      for (let i = 0; i < count; i++) {
+        offset.subVectors(points[i], target);
+        along[i] = offset.dot(eye);
+        across[i] = offset.dot(right);
+        vertical[i] = offset.dot(up);
       }
-      if (behind) break;
+    };
 
-      // Slide the aim point so the silhouette centres. At the target's depth
-      // one NDC unit spans distance*tan(halfAngle) in world units.
-      const dx = (minX + maxX) / 2;
-      const dy = (minY + maxY) / 2;
-      target.addScaledVector(right, dx * distance * tanX)
-            .addScaledVector(up, dy * distance * tanY);
+    // Largest |NDC| over all points at distance d, plus the NDC bounds needed
+    // to re-centre. A point at or behind the camera returns Infinity, which
+    // simply tells the bisection that d is too small.
+    const measure = (distance) => {
+      let maxAbs = 0;
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      for (let i = 0; i < count; i++) {
+        const depth = distance - along[i];
+        if (depth <= MIN_CAMERA_DEPTH) return { maxAbs: Infinity };
+        const x = across[i] / (depth * tanX);
+        const y = vertical[i] / (depth * tanY);
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+        const abs = Math.max(Math.abs(x), Math.abs(y));
+        if (abs > maxAbs) maxAbs = abs;
+      }
+      return { maxAbs, centreX: (minX + maxX) / 2, centreY: (minY + maxY) / 2 };
+    };
 
-      // Then pull in (or push out) so the wider axis just fills the frame.
-      const fill = Math.max((maxX - minX) / 2, (maxY - minY) / 2);
-      if (fill > 1e-4) distance *= fill;
+    let distance = 0;
+    for (let round = 0; round < FIT_ROUNDS; round++) {
+      projectOffsets();
+
+      // An upper bound that is guaranteed to fit: the distance at which every
+      // point fits under a *parallel* projection, which always overshoots a
+      // perspective one. Doubled defensively so `hi` is never marginal.
+      let maxAlong = -Infinity;
+      let hi = 0;
+      for (let i = 0; i < count; i++) {
+        if (along[i] > maxAlong) maxAlong = along[i];
+        hi = Math.max(
+          hi,
+          along[i] + Math.abs(across[i]) / tanX,
+          along[i] + Math.abs(vertical[i]) / tanY
+        );
+      }
+      hi = Math.max(hi * 2, maxAlong + 1);
+      if (!Number.isFinite(hi) || hi <= 0) hi = MIN_CAMERA_DISTANCE;
+
+      // Anything at or nearer than the frontmost point cannot fit.
+      let lo = maxAlong + MIN_CAMERA_DEPTH;
+
+      for (let step = 0; step < BISECTION_STEPS; step++) {
+        const mid = (lo + hi) / 2;
+        if (measure(mid).maxAbs > 1) lo = mid; else hi = mid;
+      }
+      distance = hi;
+
+      // Re-centre the aim on the projected midpoint. One NDC unit spans
+      // distance*tan(halfAngle) in world units at the aim's depth.
+      const { centreX, centreY } = measure(distance);
+      if (Number.isFinite(centreX)) {
+        target.addScaledVector(right, centreX * distance * tanX)
+              .addScaledVector(up, centreY * distance * tanY);
+      }
     }
 
-    // Small breathing room so nothing sits flush against the viewport edge.
-    distance *= 1.06;
-    if (!Number.isFinite(distance) || distance < 15) distance = 15;
+    distance *= FIT_PADDING;
+    if (!Number.isFinite(distance) || distance < MIN_CAMERA_DISTANCE) {
+      distance = MIN_CAMERA_DISTANCE;
+    }
+
+    // Final centring at the padded distance, so the framing the user sees is
+    // the one that was centred.
+    projectOffsets();
+    const final = measure(distance);
+    if (Number.isFinite(final.centreX)) {
+      target.addScaledVector(right, final.centreX * distance * tanX)
+            .addScaledVector(up, final.centreY * distance * tanY);
+    }
 
     camera.position.copy(target).addScaledVector(eye, distance);
     this.controls.setTarget(target);
