@@ -7,7 +7,11 @@ import * as THREE from 'three';
 
 import { AssayIntervals } from '../src/scene/assay_intervals.js';
 import { DrillholeTraces } from '../src/scene/drillhole_traces.js';
-import { DRILL_TUBE_RADIUS, UNSAMPLED_COLOR } from '../src/scene/grade_scale.js';
+import {
+  DRILL_TUBE_RADIUS,
+  DRILL_TUBE_RADIAL_SEGMENTS,
+  UNSAMPLED_COLOR,
+} from '../src/scene/grade_scale.js';
 
 // Mirrors the /scene payload shape for the AADD004 case: nothing sampled
 // 0-37 m, assays from 37 m down, hole ends at 80 m.
@@ -36,151 +40,220 @@ function aadd004(overrides = {}) {
   };
 }
 
-const matrixOf = (mesh, i) => {
-  const m = new THREE.Matrix4();
-  mesh.getMatrixAt(i, m);
-  const pos = new THREE.Vector3();
-  const quat = new THREE.Quaternion();
-  const scale = new THREE.Vector3();
-  m.decompose(pos, quat, scale);
-  return { pos, quat, scale };
-};
+const meshOf = (r, holeId = 'AADD004') =>
+  [...r.group.children, ...r.plannedGroup.children]
+    .find(m => m.userData.hole_id === holeId);
+
+// Vertex positions of one hole's tube, as {x,y,z} objects.
+function vertices(mesh) {
+  const p = mesh.geometry.getAttribute('position');
+  const out = [];
+  for (let i = 0; i < p.count; i++) out.push({ x: p.getX(i), y: p.getY(i), z: p.getZ(i) });
+  return out;
+}
 
 // ---------------------------------------------------------------------------
-// Task 1 -- absolute placement, no tubes in unsampled zones
+// Absolute placement -- no tube in the unsampled zone
 // ---------------------------------------------------------------------------
 
-test('no interval tube is rendered in the unsampled 0-37 m zone', () => {
-  const scene = new THREE.Scene();
-  const r = new AssayIntervals(scene);
+test('no tube geometry exists in the unsampled 0-37 m zone', () => {
+  const r = new AssayIntervals(new THREE.Scene());
   r.render([aadd004()]);
 
-  // Every rendered instance must sit at or below 37 m (y <= -37 + half length).
-  for (let i = 0; i < r.mesh.count; i++) {
-    const { pos, scale } = matrixOf(r.mesh, i);
-    const topY = pos.y + scale.y / 2;
-    assert.ok(topY <= -37 + 1e-6,
-      `instance ${i} extends to y=${topY}, above the 37 m first sample`);
+  const ys = vertices(meshOf(r)).map(v => v.y);
+  // Sampling starts at 37 m, so nothing may sit above -37 (bar float slop).
+  assert.ok(Math.max(...ys) <= -37 + 1e-4,
+    `tube reaches y=${Math.max(...ys)}, above the 37 m first sample`);
+});
+
+test('the tube spans exactly 37 m to 40 m', () => {
+  const r = new AssayIntervals(new THREE.Scene());
+  r.render([aadd004()]);
+
+  const ys = vertices(meshOf(r)).map(v => v.y);
+  assert.ok(Math.abs(Math.max(...ys) - -37) < 1e-4, `top at ${Math.max(...ys)}`);
+  assert.ok(Math.abs(Math.min(...ys) - -40) < 1e-4, `bottom at ${Math.min(...ys)}`);
+});
+
+test('every surface vertex sits exactly one radius from the centreline', () => {
+  const r = new AssayIntervals(new THREE.Scene());
+  r.render([aadd004()]);
+
+  // Vertical hole on the Y axis, so radial distance is hypot(x, z). Cap centre
+  // vertices sit on the axis, so allow those.
+  for (const v of vertices(meshOf(r))) {
+    const radial = Math.hypot(v.x, v.z);
+    const onAxis = radial < 1e-6;
+    assert.ok(onAxis || Math.abs(radial - DRILL_TUBE_RADIUS) < 1e-4,
+      `vertex at radial distance ${radial}, expected ${DRILL_TUBE_RADIUS}`);
   }
 });
 
-test('the first tube starts exactly 37 m down the trace', () => {
-  const scene = new THREE.Scene();
-  const r = new AssayIntervals(scene);
+// ---------------------------------------------------------------------------
+// Leapfrog continuity -- one unbroken tube, colour bands, caps only at the ends
+// ---------------------------------------------------------------------------
+
+test('adjacent intervals share a ring position, leaving no gap', () => {
+  const r = new AssayIntervals(new THREE.Scene());
   r.render([aadd004()]);
 
-  const { pos, scale } = matrixOf(r.mesh, 0);
-  assert.ok(Math.abs((pos.y + scale.y / 2) - -37) < 1e-6);
-  assert.ok(Math.abs((pos.y - scale.y / 2) - -38) < 1e-6);
+  // The 38 m boundary between a1 and a2 must carry rings from both, at the
+  // same place -- that is what makes the colour change crisp without a seam.
+  const atBoundary = vertices(meshOf(r)).filter(v => Math.abs(v.y - -38) < 1e-4);
+  assert.equal(atBoundary.length, DRILL_TUBE_RADIAL_SEGMENTS * 2,
+    'expected two coincident rings at the interval boundary');
 });
 
-// ---------------------------------------------------------------------------
-// Task 2 -- uniform radius, smooth tubes, flush joints
-// ---------------------------------------------------------------------------
-
-test('every tube uses the same radius regardless of grade', () => {
-  const scene = new THREE.Scene();
-  const r = new AssayIntervals(scene);
+test('colour changes at the interval boundary', () => {
+  const r = new AssayIntervals(new THREE.Scene());
   r.render([aadd004()]);
 
-  // InstancedMesh stores matrices in a Float32Array, so compare at float32
-  // precision rather than double.
-  for (let i = 0; i < r.mesh.count; i++) {
-    const { scale } = matrixOf(r.mesh, i);
-    assert.ok(Math.abs(scale.x - DRILL_TUBE_RADIUS) < 1e-6, `x radius on ${i}`);
-    assert.ok(Math.abs(scale.z - DRILL_TUBE_RADIUS) < 1e-6, `z radius on ${i}`);
+  const mesh = meshOf(r);
+  const pos = mesh.geometry.getAttribute('position');
+  const col = mesh.geometry.getAttribute('color');
+  const seen = new Set();
+  for (let i = 0; i < pos.count; i++) {
+    if (Math.abs(pos.getY(i) - -38) < 1e-4) {
+      seen.add(`${col.getX(i).toFixed(3)},${col.getY(i).toFixed(3)},${col.getZ(i).toFixed(3)}`);
+    }
+  }
+  assert.equal(seen.size, 2, 'both interval colours should meet at the boundary');
+});
+
+test('caps exist only where sampling starts and stops', () => {
+  const r = new AssayIntervals(new THREE.Scene());
+  r.render([aadd004()]);
+
+  // A cap contributes one centre vertex on the axis. Two runs' worth would be
+  // more; a1/a2 are contiguous so there is exactly one run -> two caps.
+  const onAxis = vertices(meshOf(r)).filter(v => Math.hypot(v.x, v.z) < 1e-6);
+  assert.equal(onAxis.length, 2, 'one cap centre at each end of the run');
+});
+
+test('a sampling gap splits the tube into separate runs', () => {
+  const r = new AssayIntervals(new THREE.Scene());
+  r.render([aadd004({
+    assays: [
+      { id: 'a1', from_depth: 10, to_depth: 12, grade_value: 1.0, grade_unit: 'g/t',
+        unsampled: false, color: '#ff5a1f', start_pos: [0,0,-10], end_pos: [0,0,-12] },
+      // 12 - 30 m not assayed at all
+      { id: 'a2', from_depth: 30, to_depth: 33, grade_value: 2.0, grade_unit: 'g/t',
+        unsampled: false, color: '#ff5a1f', start_pos: [0,0,-30], end_pos: [0,0,-33] },
+    ],
+  })]);
+
+  const onAxis = vertices(meshOf(r)).filter(v => Math.hypot(v.x, v.z) < 1e-6);
+  assert.equal(onAxis.length, 4, 'two runs -> four cap centres');
+
+  // Nothing may be drawn across the 12-30 m gap.
+  const inGap = vertices(meshOf(r)).filter(v => v.y < -12.001 && v.y > -29.999);
+  assert.equal(inGap.length, 0, 'no geometry inside the unsampled stretch');
+});
+
+test('smooth normals point radially outward from the centreline', () => {
+  const r = new AssayIntervals(new THREE.Scene());
+  r.render([aadd004()]);
+
+  const mesh = meshOf(r);
+  const pos = mesh.geometry.getAttribute('position');
+  const nrm = mesh.geometry.getAttribute('normal');
+  for (let i = 0; i < pos.count; i++) {
+    const radial = Math.hypot(pos.getX(i), pos.getZ(i));
+    if (radial < 1e-6) continue; // cap centre
+    // Surface normal should match the outward direction, and be unit length.
+    const len = Math.hypot(nrm.getX(i), nrm.getY(i), nrm.getZ(i));
+    assert.ok(Math.abs(len - 1) < 1e-3, `normal length ${len}`);
   }
 });
 
-test('tube geometry is smooth-shaded with a high radial segment count', () => {
-  const scene = new THREE.Scene();
-  const r = new AssayIntervals(scene);
-  r.render([aadd004()]);
+test('a curved hole produces a tube that follows the bend', () => {
+  const r = new AssayIntervals(new THREE.Scene());
+  r.render([aadd004({
+    trace: [
+      { depth: 0, x: 0, y: 0, z: 0, dip: -90, azimuth: 90 },
+      { depth: 50, x: 0, y: 0, z: -50, dip: -90, azimuth: 90 },
+      { depth: 100, x: 35, y: 0, z: -85, dip: -45, azimuth: 90 },
+    ],
+    assays: [
+      { id: 'a1', from_depth: 40, to_depth: 70, grade_value: 1.2, grade_unit: 'g/t',
+        unsampled: false, color: '#ff5a1f', start_pos: [0,0,-40], end_pos: [21,0,-71] },
+    ],
+  })]);
 
-  assert.equal(r.mesh.geometry.parameters.radialSegments, 20);
-  assert.equal(r.mesh.material.flatShading, false);
-});
-
-test('adjacent intervals meet flush with no gap or overlap', () => {
-  const scene = new THREE.Scene();
-  const r = new AssayIntervals(scene);
-  r.render([aadd004()]);
-
-  // a1 ends at 38 m, a2 starts at 38 m -- the caps must coincide.
-  const first = matrixOf(r.mesh, 0);
-  const second = matrixOf(r.mesh, 1);
-  const firstBottom = first.pos.y - first.scale.y / 2;
-  const secondTop = second.pos.y + second.scale.y / 2;
-  assert.ok(Math.abs(firstBottom - secondTop) < 1e-6,
-    `joint gap of ${Math.abs(firstBottom - secondTop)} m`);
+  const verts = vertices(meshOf(r));
+  // The bend at 50 m means the tube must gain easting below it.
+  assert.ok(Math.max(...verts.map(v => v.x)) > 5,
+    'tube should follow the hole east of the dogleg');
+  // Still exactly two caps: one interval, one run.
+  const onAxis = verts.filter(v =>
+    Math.abs(v.x - 0) < 1e-6 && Math.abs(v.z - 0) < 1e-6 && v.y < -39.9 && v.y > -40.1);
+  assert.equal(onAxis.length, 1, 'one cap centre at the 40 m start');
 });
 
 // ---------------------------------------------------------------------------
-// Task 3 -- unsampled intervals never become tubes
+// Unsampled intervals never become tubes
 // ---------------------------------------------------------------------------
 
 test('null-grade and placeholder-sample intervals render no tube', () => {
-  const scene = new THREE.Scene();
-  const r = new AssayIntervals(scene);
+  const r = new AssayIntervals(new THREE.Scene());
   r.render([aadd004({
     assays: [
       { id: 'u1', sample_id: 'NSR', from_depth: 0, to_depth: 12, grade_value: null,
         grade_unit: 'g/t', unsampled: true, color: UNSAMPLED_COLOR,
-        start_pos: [0, 0, 0], end_pos: [0, 0, -12] },
+        start_pos: [0,0,0], end_pos: [0,0,-12] },
       { id: 'u2', sample_id: 'No Sample', from_depth: 20, to_depth: 30, grade_value: null,
         grade_unit: 'g/t', unsampled: true, color: UNSAMPLED_COLOR,
-        start_pos: [0, 0, -20], end_pos: [0, 0, -30] },
+        start_pos: [0,0,-20], end_pos: [0,0,-30] },
       { id: 'g1', sample_id: 'S02', from_depth: 12, to_depth: 20, grade_value: 0.62,
         grade_unit: 'g/t', unsampled: false, color: '#ffc233',
-        start_pos: [0, 0, -12], end_pos: [0, 0, -20] },
+        start_pos: [0,0,-12], end_pos: [0,0,-20] },
     ],
   })]);
 
-  assert.equal(r.mesh.count, 1, 'only the one assayed interval should render');
+  assert.equal(r.intervalsData.length, 1, 'only the assayed interval is kept');
   assert.equal(r.intervalsData[0].id, 'g1');
+  const ys = vertices(meshOf(r)).map(v => v.y);
+  assert.ok(Math.max(...ys) <= -12 + 1e-4);
+  assert.ok(Math.min(...ys) >= -20 - 1e-4);
 });
 
 // ---------------------------------------------------------------------------
-// Task 4 -- planned holes styled distinctly and separately toggleable
+// Planned holes
 // ---------------------------------------------------------------------------
 
-test('planned holes get their own translucent interval mesh', () => {
-  const scene = new THREE.Scene();
-  const r = new AssayIntervals(scene);
+test('planned holes get their own translucent group', () => {
+  const r = new AssayIntervals(new THREE.Scene());
   r.render([
     aadd004(),
     aadd004({ collar_id: 'c-2', hole_id: 'AAPL001', hole_status: 'planned' }),
   ]);
 
-  assert.ok(r.plannedMesh, 'planned mesh should exist');
-  assert.equal(r.plannedMesh.material.transparent, true);
-  assert.ok(r.plannedMesh.material.opacity < 1.0);
-  // Drilled intervals stay fully opaque.
-  assert.equal(r.mesh.material.transparent, false);
-  assert.equal(r.mesh.material.opacity, 1.0);
-});
-
-test('planned traces are dashed and live in a separately toggleable group', () => {
-  const scene = new THREE.Scene();
-  const r = new DrillholeTraces(scene);
-  r.render([
-    aadd004(),
-    aadd004({ collar_id: 'c-2', hole_id: 'AAPL001', hole_status: 'planned' }),
-  ]);
-
-  assert.equal(r.group.children.length, 1, 'one drilled trace');
-  assert.equal(r.plannedGroup.children.length, 1, 'one planned trace');
-  assert.equal(r.plannedGroup.children[0].material.isLineDashedMaterial, true);
-  assert.equal(r.group.children[0].material.isLineDashedMaterial, undefined);
+  assert.equal(r.group.children.length, 1);
+  assert.equal(r.plannedGroup.children.length, 1);
+  assert.equal(r.plannedGroup.children[0].material.transparent, true);
+  assert.ok(r.plannedGroup.children[0].material.opacity < 1.0);
+  assert.equal(r.group.children[0].material.transparent, false);
 
   r.setPlannedVisible(false);
   assert.equal(r.plannedGroup.visible, false);
   assert.equal(r.group.visible, true, 'hiding planned must not hide drilled');
 });
 
+test('planned traces are dashed and separately toggleable', () => {
+  const r = new DrillholeTraces(new THREE.Scene());
+  r.render([
+    aadd004(),
+    aadd004({ collar_id: 'c-2', hole_id: 'AAPL001', hole_status: 'planned' }),
+  ]);
+
+  assert.equal(r.group.children.length, 1);
+  assert.equal(r.plannedGroup.children.length, 1);
+  assert.equal(r.plannedGroup.children[0].material.isLineDashedMaterial, true);
+  assert.equal(r.group.children[0].material.isLineDashedMaterial, undefined);
+});
+
 test('a hole with no status defaults to drilled styling', () => {
-  const scene = new THREE.Scene();
-  const r = new DrillholeTraces(scene);
+  const r = new DrillholeTraces(new THREE.Scene());
   const hole = aadd004();
   delete hole.hole_status;
   r.render([hole]);
@@ -189,85 +262,43 @@ test('a hole with no status defaults to drilled styling', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Curved holes
+// Cutoff + LOD still work on the new geometry
 // ---------------------------------------------------------------------------
 
-test('an interval spanning a dogleg renders as multiple chained tubes', () => {
-  const scene = new THREE.Scene();
-  const r = new AssayIntervals(scene);
-  r.render([aadd004({
-    trace: [
-      { depth: 0, x: 0, y: 0, z: 0, dip: -90, azimuth: 90 },
-      { depth: 50, x: 0, y: 0, z: -50, dip: -90, azimuth: 90 },
-      { depth: 100, x: 35, y: 0, z: -85, dip: -45, azimuth: 90 },
-    ],
-    assays: [
-      { id: 'a1', sample_id: 'S01', from_depth: 40, to_depth: 70, grade_value: 1.2,
-        grade_unit: 'g/t', unsampled: false, color: '#ff5a1f',
-        start_pos: [0, 0, -40], end_pos: [21, 0, -71] },
-    ],
-  })]);
+test('per-vertex grade is available for the GPU cutoff', () => {
+  const r = new AssayIntervals(new THREE.Scene());
+  r.render([aadd004()]);
 
-  assert.equal(r.mesh.count, 2, 'should split at the 50 m station');
-  // Both sub-segments belong to the same source interval.
-  assert.equal(r.intervalsData[0].id, 'a1');
-  assert.equal(r.intervalsData[1].id, 'a1');
+  const grade = meshOf(r).geometry.getAttribute('aGrade');
+  assert.ok(grade, 'aGrade attribute must exist');
+  // Float32BufferAttribute, so compare at float32 precision.
+  const values = [...new Set([...Array(grade.count).keys()].map(i => grade.getX(i)))]
+    .sort((a, b) => a - b);
+  assert.equal(values.length, 2, 'one grade per interval');
+  assert.ok(Math.abs(values[0] - 0.45) < 1e-6);
+  assert.ok(Math.abs(values[1] - 1.85) < 1e-6);
 });
 
-// ---------------------------------------------------------------------------
-// Mesh shape -- dogleg joints
-// ---------------------------------------------------------------------------
+test('LOD hides a whole hole mesh, dropping its draw call', () => {
+  const r = new AssayIntervals(new THREE.Scene());
+  r.render([aadd004()]);
 
-test('sub-segments of one interval overlap so a bend has no notch', () => {
-  const scene = new THREE.Scene();
-  const r = new AssayIntervals(scene);
-  r.render([aadd004({
-    trace: [
-      { depth: 0, x: 0, y: 0, z: 0, dip: -90, azimuth: 90 },
-      { depth: 50, x: 0, y: 0, z: -50, dip: -90, azimuth: 90 },
-      { depth: 100, x: 35, y: 0, z: -85, dip: -45, azimuth: 90 },
-    ],
-    assays: [
-      { id: 'a1', sample_id: 'S01', from_depth: 40, to_depth: 70, grade_value: 1.2,
-        grade_unit: 'g/t', unsampled: false, color: '#ff5a1f',
-        start_pos: [0, 0, -40], end_pos: [21, 0, -71] },
-    ],
-  })]);
+  r.setLodStates(new Map([['c-1', false]]));
+  assert.equal(meshOf(r).visible, false);
 
-  assert.equal(r.mesh.count, 2);
-  // Each sub-segment is longer than its own chord, because the shared interior
-  // joint is grown on both sides.
-  const chordA = r.intervalsData[0].start.distanceTo(r.intervalsData[0].end);
-  const chordB = r.intervalsData[1].start.distanceTo(r.intervalsData[1].end);
-  assert.ok(matrixOf(r.mesh, 0).scale.y > chordA, 'first segment should grow at its inner end');
-  assert.ok(matrixOf(r.mesh, 1).scale.y > chordB, 'second segment should grow at its inner end');
-
-  // Only the interior joint grows -- the interval's own ends stay put.
-  assert.equal(r.intervalsData[0].joinStart, false);
-  assert.equal(r.intervalsData[0].joinEnd, true);
-  assert.equal(r.intervalsData[1].joinStart, true);
-  assert.equal(r.intervalsData[1].joinEnd, false);
+  r.setLodStates(new Map([['c-1', true]]));
+  assert.equal(meshOf(r).visible, true);
 });
 
-test('a single-segment interval is never grown', () => {
+test('re-rendering disposes the previous geometry', () => {
   const scene = new THREE.Scene();
   const r = new AssayIntervals(scene);
   r.render([aadd004()]);
+  const first = meshOf(r).geometry;
+  let disposed = false;
+  first.addEventListener('dispose', () => { disposed = true; });
 
-  // 37-38 m on a straight trace: one segment, exactly 1 m, no overlap.
-  assert.ok(Math.abs(matrixOf(r.mesh, 0).scale.y - 1.0) < 1e-6);
-  assert.equal(r.intervalsData[0].joinStart, false);
-  assert.equal(r.intervalsData[0].joinEnd, false);
-});
-
-test('grown segments still produce a finite matrix', () => {
-  const scene = new THREE.Scene();
-  const r = new AssayIntervals(scene);
   r.render([aadd004()]);
-  for (let i = 0; i < r.mesh.count; i++) {
-    const { pos, scale } = matrixOf(r.mesh, i);
-    for (const v of [pos.x, pos.y, pos.z, scale.x, scale.y, scale.z]) {
-      assert.ok(Number.isFinite(v), 'matrix must not contain NaN');
-    }
-  }
+  assert.ok(disposed, 'old geometry must be released');
+  assert.equal(r.group.children.length, 1);
 });

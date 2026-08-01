@@ -99,6 +99,10 @@ export class SceneHover {
     for (const hit of hits) {
       const obj = hit.object;
       if (obj.parent === this.group) continue; // ignore our own highlight
+      // Continuous assay tube: the hole owns the mesh, so its id is right there.
+      if (obj.userData && obj.userData.intervalRefs) {
+        collarId = obj.userData.collar_id; break;
+      }
       if (obj.isInstancedMesh && obj.userData && obj.userData.intervals) {
         const iv = obj.userData.intervals[hit.instanceId];
         if (iv) { collarId = iv.collar_id; break; }

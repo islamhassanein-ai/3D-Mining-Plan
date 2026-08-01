@@ -32,11 +32,30 @@ export class SceneSelection {
       for (const hit of intersects) {
         const obj = hit.object;
         
-        // 1. Check if it's an InstancedMesh (Assays or Lithologies)
+        // 1a. Continuous assay tube: one mesh per hole, so the interval is
+        //     resolved from the hit triangle's first vertex.
+        if (obj.userData && obj.userData.intervalRefs && hit.face) {
+          const interval = obj.userData.intervalRefs[hit.face.a];
+          if (interval) {
+            this.onSelect('interval', {
+              collarId: interval.collar_id,
+              holeId: interval.hole_id,
+              intervalId: interval.id,
+              intervalType: 'assay',
+              fromDepth: interval.from_depth,
+              toDepth: interval.to_depth,
+              gradeValue: interval.grade_value,
+              point: hit.point
+            });
+            return;
+          }
+        }
+
+        // 1b. Lithologies are still an InstancedMesh.
         if (obj.isInstancedMesh && obj.userData && obj.userData.intervals) {
           const instanceId = hit.instanceId;
           const interval = obj.userData.intervals[instanceId];
-          
+
           if (interval) {
             this.onSelect('interval', {
               collarId: interval.collar_id,
