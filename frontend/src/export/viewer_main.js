@@ -82,8 +82,15 @@ async function initStaticViewer() {
     const dirLight2 = new THREE.DirectionalLight(0x3b82f6, 0.3);
     dirLight2.position.set(-1, -1, -1).normalize();
     scene.add(dirLight2);
-    scene.add(new THREE.GridHelper(5000, 100, 0x374151, 0x1f2937));
-    scene.add(new THREE.AxesHelper(100));
+    // Reference geometry, tagged so the camera fit ignores it -- the grid
+    // spans 5 km and would otherwise dominate the framing. (visibleBounds
+    // also rejects these by type, belt and braces.)
+    const gridHelper = new THREE.GridHelper(5000, 100, 0x374151, 0x1f2937);
+    gridHelper.userData.excludeFromFit = true;
+    scene.add(gridHelper);
+    const axesHelper = new THREE.AxesHelper(100);
+    axesHelper.userData.excludeFromFit = true;
+    scene.add(axesHelper);
 
     const controls = new DampedCameraControls(camera, renderer.domElement, scene);
     controls.setTarget(new THREE.Vector3(0, 0, 0));
@@ -128,6 +135,12 @@ async function initStaticViewer() {
       sceneLoader,
       lodManager,
     };
+
+    // A standalone export is a single file that gets emailed around and opened
+    // who-knows-where. Exposing the viewport gives whoever receives a "it's
+    // blank on my machine" report something to inspect from the console --
+    // there is no dev server or source map to fall back on.
+    window.__miningViewport = viewport;
 
     // 7. Resize observer
     new ResizeObserver(() => {

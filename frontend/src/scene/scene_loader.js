@@ -6,6 +6,9 @@ import * as THREE from 'three';
 // which would otherwise produce slivers instead of triangles.
 const SURFACE_POINT_MERGE_TOLERANCE = 2.0;
 
+// Three.js helper objects, excluded from the camera fit -- see visibleBounds.
+const HELPER_TYPES = new Set(['GridHelper', 'AxesHelper', 'Box3Helper']);
+
 /**
  * Every point in the project whose elevation was actually surveyed on the
  * ground: drill collars, trench channel samples, and structural stations.
@@ -143,12 +146,30 @@ export class SceneLoader {
     const bbox = new THREE.Box3();
     let hasPoints = false;
 
+    // World matrices are normally refreshed by the renderer, so an object
+    // added since the last frame still carries an identity matrix. Most
+    // renderers here bake world coordinates straight into their vertices and
+    // don't notice, but anything placed via .position -- the planned-hole
+    // collar marker -- would be read at the world origin. On a UTM site that
+    // stretches the bounds from the data out to (0,0,0), roughly 2.4 million
+    // metres, and the initial fit parks the camera so far away the scene looks
+    // empty until something triggers a second fit.
+    this.scene.updateMatrixWorld(true);
+
     this.scene.traverse((obj) => {
       if (!obj.isMesh && !obj.isLine && !obj.isPoints) return;
       // visible=false anywhere up the chain removes the whole subtree.
       for (let node = obj; node; node = node.parent) {
         if (node.visible === false) return;
       }
+      // Reference geometry, not data. The grid helper spans 5 km, so letting
+      // it into the bounds frames the grid and shrinks an 80 m prospect to a
+      // few pixels -- which is exactly what the static export viewer did,
+      // since it adds its helpers without the excludeFromFit flag. Checking
+      // the type as well as the flag means no scene can reintroduce this by
+      // forgetting to tag a helper.
+      // (Three.js gives helpers no `isX` flag, but it does set `.type`.)
+      if (HELPER_TYPES.has(obj.type)) return;
       // Sprites (labels) and the hover sleeve are decoration that follows the
       // data; including them would bias the fit.
       if (obj.userData && obj.userData.excludeFromFit) return;
@@ -206,28 +227,79 @@ export class SceneLoader {
     const right = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), eye).normalize();
     const up = new THREE.Vector3().crossVectors(eye, right).normalize();
 
-    const q = new THREE.Vector3();
-    let distance = 0;
+    const corners = [];
     for (const x of [bbox.min.x, bbox.max.x]) {
       for (const y of [bbox.min.y, bbox.max.y]) {
         for (const z of [bbox.min.z, bbox.max.z]) {
-          q.set(x, y, z).sub(center);
-          const along = q.dot(eye);
-          distance = Math.max(
-            distance,
-            along + Math.abs(q.dot(right)) / tanX,
-            along + Math.abs(q.dot(up)) / tanY
-          );
+          corners.push(new THREE.Vector3(x, y, z));
         }
       }
     }
 
-    // Small breathing room so nothing sits flush against the viewport edge.
-    distance *= 1.08;
-    if (!Number.isFinite(distance) || distance < 40) distance = 40;
+    // First guess: the distance at which the corners fit under a *parallel*
+    // projection. It always overshoots, which is what we want -- the refine
+    // loop below only ever pulls in.
+    const target = center.clone();
+    const q = new THREE.Vector3();
+    let distance = 0;
+    for (const corner of corners) {
+      q.subVectors(corner, target);
+      const along = q.dot(eye);
+      distance = Math.max(
+        distance,
+        along + Math.abs(q.dot(right)) / tanX,
+        along + Math.abs(q.dot(up)) / tanY
+      );
+    }
+    if (!Number.isFinite(distance) || distance <= 0) distance = 40;
 
-    camera.position.copy(center).addScaledVector(eye, distance);
-    this.controls.setTarget(center);
+    // Refine against the real perspective projection. A parallel estimate is
+    // wrong in two ways that both show on screen: near corners project wider
+    // than far ones, so the fit is looser than it needs to be, and the
+    // silhouette's centre is not the world centre, so the model sits off to
+    // one side. Each pass re-centres the aim on the projected midpoint and
+    // rescales the distance by how much of the frame is actually filled.
+    // Four passes converge to within a fraction of a percent.
+    const projected = new THREE.Vector3();
+    for (let pass = 0; pass < 4; pass++) {
+      camera.position.copy(target).addScaledVector(eye, distance);
+      camera.lookAt(target);
+      camera.updateMatrixWorld(true);
+      camera.updateProjectionMatrix();
+
+      let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      let behind = false;
+      for (const corner of corners) {
+        projected.copy(corner).project(camera);
+        // A corner behind the near plane projects nonsensically; if that
+        // happens the estimate is already inside the model, so stop refining
+        // and keep the last good distance.
+        if (projected.z > 1) { behind = true; break; }
+        if (projected.x < minX) minX = projected.x;
+        if (projected.x > maxX) maxX = projected.x;
+        if (projected.y < minY) minY = projected.y;
+        if (projected.y > maxY) maxY = projected.y;
+      }
+      if (behind) break;
+
+      // Slide the aim point so the silhouette centres. At the target's depth
+      // one NDC unit spans distance*tan(halfAngle) in world units.
+      const dx = (minX + maxX) / 2;
+      const dy = (minY + maxY) / 2;
+      target.addScaledVector(right, dx * distance * tanX)
+            .addScaledVector(up, dy * distance * tanY);
+
+      // Then pull in (or push out) so the wider axis just fills the frame.
+      const fill = Math.max((maxX - minX) / 2, (maxY - minY) / 2);
+      if (fill > 1e-4) distance *= fill;
+    }
+
+    // Small breathing room so nothing sits flush against the viewport edge.
+    distance *= 1.06;
+    if (!Number.isFinite(distance) || distance < 15) distance = 15;
+
+    camera.position.copy(target).addScaledVector(eye, distance);
+    this.controls.setTarget(target);
     this.controls.update();
 
     this.controls.storeHome();

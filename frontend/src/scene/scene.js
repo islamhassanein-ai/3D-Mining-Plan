@@ -31,6 +31,7 @@ import { StructuralPanel } from '../components/structural_panel.js';
 import { QaqcPanel } from '../components/qaqc_panel.js';
 import { LayerTogglePanel } from '../components/layer_toggles.js';
 import { SceneLegend } from '../components/scene_legend.js';
+import { SearchBar } from '../components/search_bar.js';
 import { ApiClient } from '../services/api_client.js';
 import { computeProjectSummary } from '../services/project_summary.js';
 import { ApiDataSource, ShareTokenDataSource } from '../services/data_source.js';
@@ -178,23 +179,29 @@ export function init3DViewport(container, options = {}) {
   // variables, but the WebGL viewport has no cascade -- background, fill
   // light and grid have to be set explicitly. Grade colours are deliberately
   // untouched: they encode data and must not shift with the theme.
+  const SCENE_THEMES = {
+    dark:     { bg: 0x0b0f19, ambient: 0.60, fill: 0x3b82f6, fillIntensity: 0.30, grid: [0x374151, 0x1f2937] },
+    light:    { bg: 0xe6ecf4, ambient: 0.85, fill: 0x3b82f6, fillIntensity: 0.12, grid: [0x94a3b8, 0xcbd5e1] },
+    // Neutral charcoal with a white fill light instead of a blue one: any
+    // tint in the fill lands on every grade colour at once and shifts how it
+    // reads, which defeats the point of a reference-grade view.
+    graphite: { bg: 0x17171a, ambient: 0.66, fill: 0xffffff, fillIntensity: 0.14, grid: [0x3f4046, 0x2a2b2f] },
+  };
+
   function setTheme(theme) {
-    const light = theme === 'light';
-    scene.background = new THREE.Color(light ? 0xe6ecf4 : 0x0b0f19);
+    const cfg = SCENE_THEMES[theme] || SCENE_THEMES.dark;
+    scene.background = new THREE.Color(cfg.bg);
     // On a pale background the cool fill light muddies the surface, and the
     // ambient has to come down or everything flattens out.
-    ambientLight.intensity = light ? 0.85 : 0.6;
-    dirLight2.intensity = light ? 0.12 : 0.3;
+    ambientLight.intensity = cfg.ambient;
+    dirLight2.color.setHex(cfg.fill);
+    dirLight2.intensity = cfg.fillIntensity;
 
     const wasVisible = gridHelper.visible;
     scene.remove(gridHelper);
     gridHelper.geometry.dispose();
     gridHelper.material.dispose();
-    gridHelper = new THREE.GridHelper(
-      5000, 100,
-      light ? 0x94a3b8 : 0x374151,
-      light ? 0xcbd5e1 : 0x1f2937
-    );
+    gridHelper = new THREE.GridHelper(5000, 100, cfg.grid[0], cfg.grid[1]);
     gridHelper.position.y = 0;
     gridHelper.visible = wasVisible;
     gridHelper.userData.excludeFromFit = true;
@@ -277,6 +284,7 @@ window.StructuralPanel = StructuralPanel;
 window.QaqcPanel = QaqcPanel;
 window.LayerTogglePanel = LayerTogglePanel;
 window.SceneLegend = SceneLegend;
+window.SearchBar = SearchBar;
 window.ApiClient = ApiClient;
 window.ExportPanel = ExportPanel;
 window.computeProjectSummary = computeProjectSummary;

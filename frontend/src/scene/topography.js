@@ -293,8 +293,12 @@ export class TopographyRenderer {
   }
 
   // Contour lines lifted a hair above the surface so they don't z-fight with
-  // the triangles they were cut from. White at low opacity reads as a survey
-  // overlay on every band of the Earth ramp, warm or cool.
+  // the triangles they were cut from.
+  //
+  // They are deliberately almost invisible: hard white lines read as drawn-on
+  // annotation and pull the eye away from the drilling, which is what the
+  // scene is actually for. At this weight they only shade the surface enough
+  // to give relief a sense of gradient -- you notice the slope, not the lines.
   _buildContours(positions, indices, minEl, maxEl) {
     const interval = niceContourInterval(maxEl - minEl);
     const segments = buildContourSegments(
@@ -311,9 +315,11 @@ export class TopographyRenderer {
     );
 
     const material = new THREE.LineBasicMaterial({
-      color: 0xffffff,
+      // Warm dark brown rather than white: it tints the Earth ramp instead of
+      // overprinting it, so the lines never separate from the ground.
+      color: 0x4a3520,
       transparent: true,
-      opacity: 0.34,
+      opacity: 0.16,
       depthWrite: false,
     });
 

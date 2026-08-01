@@ -148,6 +148,25 @@ export class DampedCameraControls {
     this.updateSphericalFromCamera();
   }
 
+  /**
+   * Centres on `target` and pulls in far enough to fill the view with a
+   * sphere of `radius` metres around it, keeping the current viewing angle so
+   * the user doesn't lose their bearings. Used by the search bar to jump to a
+   * hole, trench or sample.
+   *
+   * The move is damped rather than instant -- update() eases toward
+   * sphericalTarget, so the camera travels there and the eye can follow it.
+   */
+  frameOn(target, radius = 25) {
+    this.target.copy(target);
+    const fov = this.camera.fov * (Math.PI / 180);
+    const distance = Math.max(radius / Math.sin(fov / 2), 12);
+    this.sphericalTarget.radius = distance;
+    // Keep theta/phi: the angle is the user's, only the framing is ours.
+    this.spherical.theta = this.sphericalTarget.theta;
+    this.spherical.phi = this.sphericalTarget.phi;
+  }
+
   onPointerDown(event) {
     event.preventDefault();
 

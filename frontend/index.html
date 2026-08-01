@@ -9,8 +9,9 @@
   <script>
     // Applied before first paint so a light-mode user never sees a dark
     // flash while the bundle loads. Dark is the default.
+    var saved = localStorage.getItem('app_theme');
     document.documentElement.dataset.theme =
-      localStorage.getItem('app_theme') === 'light' ? 'light' : 'dark';
+      (saved === 'light' || saved === 'graphite') ? saved : 'dark';
   </script>
 </head>
 <body>
@@ -55,6 +56,9 @@
         <button type="button" data-theme-set="light" title="Light theme" aria-label="Light theme">
           <svg viewBox="0 0 24 24"><path fill="currentColor" d="M12,8A4,4 0 0,0 8,12A4,4 0 0,0 12,16A4,4 0 0,0 16,12A4,4 0 0,0 12,8M12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6A6,6 0 0,1 18,12A6,6 0 0,1 12,18M20,8.69V4H15.31L12,0.69L8.69,4H4V8.69L0.69,12L4,15.31V20H8.69L12,23.31L15.31,20H20V15.31L23.31,12L20,8.69Z"/></svg>
         </button>
+        <button type="button" data-theme-set="graphite" title="Graphite theme (neutral, reference-grade colour)" aria-label="Graphite theme">
+          <svg viewBox="0 0 24 24"><path fill="currentColor" d="M12,2L2,7V17L12,22L22,17V7L12,2M12,4.15L19.13,7.7L12,11.26L4.87,7.7L12,4.15M4,9.3L11,12.8V19.5L4,16V9.3M13,19.5V12.8L20,9.3V16L13,19.5Z"/></svg>
+        </button>
       </div>
       </div>
     </div>
@@ -77,6 +81,12 @@
       <div class="sidebar-content">
         <!-- Visualizer Controls (populated when project active) -->
         <div id="visualizer-controls" class="sidebar-section" style="display: none;">
+
+          <div class="section-title">Find in Scene</div>
+          <div class="control-card" style="padding-top:10px;padding-bottom:10px;">
+            <div id="search-bar-container"></div>
+            <p style="font-size:10px;color:var(--text-faint);line-height:1.5;margin:6px 0 0 0;">Type a drillhole, trench or sample ID &mdash; press <kbd style="font-size:9px;">Enter</kbd> to fly there. Shortcut: <kbd style="font-size:9px;">/</kbd></p>
+          </div>
 
           <div class="section-title">Visual Controls</div>
 
@@ -266,6 +276,7 @@
         </div>
         <div>
           <div class="section-title" style="margin-bottom:8px;">General</div>
+          <div class="kbd-row"><span>Find hole / trench / sample</span><kbd>/</kbd></div>
           <div class="kbd-row"><span>Toggle this help</span><kbd>?</kbd></div>
           <div class="kbd-row"><span>Close dialogs</span><kbd>Esc</kbd></div>
         </div>
@@ -273,7 +284,7 @@
     </div>
   </div>
 
-  <script src="dist/bundle.js?v=18"></script>
+  <script src="dist/bundle.js?v=19"></script>
   <script>
     // Initialize application logic
     const API_BASE = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') ? 'http://localhost:8000' : '';
@@ -390,6 +401,11 @@
         if (e.key === '?' || (e.key === '/' && e.shiftKey)) {
           e.preventDefault();
           toggleShortcutHelp();
+          return;
+        }
+        if (e.key === '/') {
+          e.preventDefault();
+          if (window.__sceneSearch) window.__sceneSearch.focus();
         }
       });
     });
@@ -572,6 +588,7 @@
         layerContainer.innerHTML = '';
         setupLayersAndLegend(viewport3D, layerContainer);
         setupThicknessToggle(viewport3D);
+        setupSearchBar(viewport3D, data, inspector);
         applyTheme(document.documentElement.dataset.theme);
 
         // Setup Cutoff Slider + live grade-distribution histogram
@@ -647,8 +664,10 @@
     // <html data-theme>; the WebGL viewport has no cascade, so it's told
     // separately via viewport3D.setTheme(). Grade colours never change -- see
     // the LIGHT THEME block in styles/app.css.
+    const THEMES = ['dark', 'light', 'graphite'];
+
     function applyTheme(theme) {
-      const next = theme === 'light' ? 'light' : 'dark';
+      const next = THEMES.includes(theme) ? theme : 'dark';
       document.documentElement.dataset.theme = next;
       localStorage.setItem('app_theme', next);
       document.querySelectorAll('#theme-toggle button').forEach(b => {
@@ -724,6 +743,24 @@
       });
 
       return { layers, legend };
+    }
+
+    // Jump-to-feature search. Picking a drillhole or a downhole sample also
+    // opens the inspector on it, since "find AADD004" almost always means
+    // "and show me its log".
+    function setupSearchBar(viewport3D, data, inspector) {
+      const container = document.getElementById('search-bar-container');
+      if (!container) return;
+      container.innerHTML = '';
+      const search = new window.SearchBar(container, viewport3D, {
+        onPick: (entry) => {
+          if (!entry.collarId || !inspector) return;
+          inspector.loadCollar(entry.collarId, entry.intervalId || null);
+          revealInspector();
+        }
+      });
+      search.setData(data);
+      window.__sceneSearch = search;
     }
 
     // Opt-in second visual channel for grade: interval diameter steps with
@@ -1013,6 +1050,7 @@
         layerContainer.innerHTML = '';
         setupLayersAndLegend(viewport3D, layerContainer);
         setupThicknessToggle(viewport3D);
+        setupSearchBar(viewport3D, data, inspector);
         applyTheme(document.documentElement.dataset.theme);
 
         // Setup Cutoff Slider + live grade-distribution histogram

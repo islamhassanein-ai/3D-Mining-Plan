@@ -322,26 +322,6 @@ export class InspectorPanel {
           ${this.activeTab === 'logs' ? this.renderLogsTable() : this.renderSurveysTable()}
         </div>
 
-        ${this.activeTab === 'logs' && this.highlightedIntervalId ? `
-          <div class="true-thickness-calculator" style="margin-top:auto;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:12px;">
-            <div style="font-size:0.75rem;font-weight:700;text-transform:uppercase;color:#94a3b8;margin-bottom:8px;display:flex;align-items:center;gap:6px;">
-              <svg style="width:16px;height:16px;color:#10b981" viewBox="0 0 24 24"><path fill="currentColor" d="M17,12V15H16V17H13V16H11V17H8V15H7V12H8V10H11V11H13V10H16V12H17M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2Z"/></svg>
-              True Thickness Calculator
-            </div>
-            <div style="display:flex;gap:12px;margin-bottom:10px;">
-              <div style="flex:1;display:flex;flex-direction:column;gap:4px;">
-                <label style="font-size:0.65rem;color:#64748b;">Vein Dip Direction (°)</label>
-                <input type="number" id="vein-dip-dir" value="90" min="0" max="360" style="background:black;border:1px solid rgba(255,255,255,0.2);color:white;padding:4px;border-radius:4px;font-size:0.75rem;width:100%;">
-              </div>
-              <div style="flex:1;display:flex;flex-direction:column;gap:4px;">
-                <label style="font-size:0.65rem;color:#64748b;">Vein Dip Angle (°)</label>
-                <input type="number" id="vein-dip-angle" value="45" min="0" max="90" style="background:black;border:1px solid rgba(255,255,255,0.2);color:white;padding:4px;border-radius:4px;font-size:0.75rem;width:100%;">
-              </div>
-            </div>
-            <button class="btn-primary" id="calc-tt-btn" style="padding:6px;font-size:0.75rem;">Calculate True Thickness</button>
-            <div id="tt-result" style="margin-top:10px;font-size:0.8125rem;color:#34d399;font-weight:600;display:none;"></div>
-          </div>
-        ` : ''}
       </div>
     `;
 
@@ -521,37 +501,5 @@ export class InspectorPanel {
       });
     });
 
-    // 4. Calculate True Thickness Button
-    const calcBtn = this.container.querySelector('#calc-tt-btn');
-    if (calcBtn) {
-      calcBtn.addEventListener('click', async () => {
-        const dipDirInput = this.container.querySelector('#vein-dip-dir');
-        const dipInput = this.container.querySelector('#vein-dip-angle');
-        const resDiv = this.container.querySelector('#tt-result');
-        
-        if (!dipDirInput || !dipInput || !resDiv) return;
-        
-        const dipDir = Number(dipDirInput.value);
-        const dip = Number(dipInput.value);
-        
-        resDiv.style.display = 'block';
-        resDiv.innerHTML = '<span style="color:#64748b">Calculating...</span>';
-        
-        try {
-          let res;
-          res = await this.dataSource.getTrueThickness(this.collarId, this.highlightedIntervalId, dipDir, dip);
-          resDiv.innerHTML = `
-            <div>✓ True Thickness: <strong style="color:white;font-size:0.95rem">${res.true_thickness.toFixed(2)}m</strong></div>
-            <div style="font-size:0.7rem;color:#94a3b8;font-weight:normal;margin-top:2px;">
-              Apparent: ${res.apparent_thickness.toFixed(2)}m | 
-              Hole: ${res.hole_dip.toFixed(0)}° / ${res.hole_azimuth.toFixed(0)}° | 
-              Angle: ${res.intersection_angle_deg.toFixed(0)}°
-            </div>
-          `;
-        } catch (err) {
-          resDiv.innerHTML = `<span style="color:#ef4444">Error: ${err.message}</span>`;
-        }
-      });
-    }
   }
 }

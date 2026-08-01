@@ -521,9 +521,14 @@
       z-index: 5;
     }
     /* Transparent controls-hint card, bottom-right corner of the 3D view */
+    /* Top-right. It used to sit bottom-right, directly on top of the
+       orientation gizmo, which renders into a 100px scissor box inset 16px
+       from that same corner (see scene/orientation_gizmo.js) -- the hint card
+       covered the compass. Bottom-left is taken by the scene legend and
+       top-left by the camera toolbar, so top-right is the free corner. */
     #viewport-hint-card {
       position: absolute;
-      bottom: 16px;
+      top: 16px;
       right: 16px;
       z-index: 5;
       background: rgba(16, 24, 40, 0.55);
@@ -832,4 +837,78 @@
       align-items: center;
       gap: 18px;
       min-width: 0;
+    }
+
+    /* =====================================================================
+       GRAPHITE THEME  (data-theme="graphite")
+       =====================================================================
+       The third option, and the one meant for long sessions. Dark and light
+       are both strongly blue -- fine for a first impression, but that blue
+       cast sits underneath every grade colour and slightly shifts how each
+       one reads. Graphite is near-neutral: a warm-tinted charcoal with
+       almost no chroma of its own, so the only saturated colour on screen is
+       the data. It also runs quieter -- lower-contrast chrome, a single
+       hairline instead of panel fills -- which is what makes it hold up over
+       an afternoon of logging rather than a demo.
+
+       This is the reference-grade view: screenshots taken here show grade
+       colours closest to their true values. */
+    html[data-theme="graphite"] {
+      --bg-darker: #17171a;
+      --bg-dark: #1d1e21;
+      --bg-panel2: #232427;
+      --bg-card: rgba(35, 36, 39, 0.9);
+      --border-light: #34363b;
+      --text-main: #ececee;
+      --text-muted: #a0a2a8;
+      --text-faint: #74767d;
+      /* Slightly desaturated gold so the accent doesn't glow against the
+         neutral background the way #d4af37 does. */
+      --gold: #c2a34d;
+      --gold-soft: #d8bd73;
+      --accent-blue: #5b8def;
+      --accent-green: #3fae7f;
+      --accent-pink: #d16b9e;
+    }
+
+    html[data-theme="graphite"] #app-header {
+      background: #1a1b1e;
+      box-shadow: none;
+      border-bottom: 1px solid var(--border-light);
+    }
+    html[data-theme="graphite"] #app-header .mark {
+      background: linear-gradient(135deg, #c2a34d 0%, #7a6222 100%);
+      box-shadow: 0 0 0 1px rgba(194, 163, 77, 0.25);
+    }
+    /* Flat panels, separated by a hairline rather than a fill -- the quiet
+       chrome that is the point of this theme. */
+    html[data-theme="graphite"] .control-card {
+      background: transparent;
+      border-color: var(--border-light);
+    }
+    html[data-theme="graphite"] .scene-toolbar,
+    html[data-theme="graphite"] .scene-legend,
+    html[data-theme="graphite"] #viewport-hint-card {
+      background: rgba(29, 30, 33, 0.92);
+      border-color: var(--border-light);
+      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+    }
+    html[data-theme="graphite"] .panel-edge-tab {
+      background: rgba(29, 30, 33, 0.94);
+    }
+    html[data-theme="graphite"] .hover-tooltip {
+      background: rgba(29, 30, 33, 0.97) !important;
+      border-color: rgba(194, 163, 77, 0.5) !important;
+    }
+    html[data-theme="graphite"] .layer-slider,
+    html[data-theme="graphite"] .slider { background: #3a3c41; }
+    html[data-theme="graphite"] .layer-switch input:checked + .layer-slider {
+      background: #4f4527;
+    }
+    html[data-theme="graphite"] .layer-switch input:checked + .layer-slider::before {
+      background: var(--gold);
+    }
+    html[data-theme="graphite"] .cutoff-number-input {
+      background: #232427;
+      border-color: var(--border-light);
     }
