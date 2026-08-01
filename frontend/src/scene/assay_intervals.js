@@ -9,6 +9,7 @@ import {
   UNSAMPLED_BUCKET_INDEX,
 } from './grade_scale.js';
 import { buildHoleTube } from './tube_builder.js';
+import { interpolateTracePosition } from './trace_geometry.js';
 
 // QA/QC-flagged samples (duplicate/blank/standard) are exploration-control
 // samples, not ore intervals -- so they're rendered in a distinct color
@@ -44,6 +45,13 @@ export class AssayIntervals {
 
     this.holeMeshes = new Map(); // collar_id -> THREE.Mesh
     this.intervalsData = [];     // every rendered interval, for the histogram etc.
+    // interval id -> { position, radius } in world space, so selecting a row
+    // in the downhole log can point at that sample in 3D. Built during render
+    // from the desurveyed trace, which is the only place the mapping from an
+    // absolute depth to a position exists.
+    this.intervalAnchors = new Map();
+    // Set by the viewport; see highlightInterval.
+    this.focusHighlight = null;
     this.currentCutoff = 0.0;
     this.lodStates = null;       // Map<collar_id, boolean>; null = LOD inactive
 
@@ -99,6 +107,18 @@ export class AssayIntervals {
 
       if (!sampled.length) continue;
       this.intervalsData.push(...sampled);
+
+      for (const interval of sampled) {
+        const midDepth = (interval.from_depth + interval.to_depth) / 2;
+        const start = interpolateTracePosition(trace, interval.from_depth);
+        const end = interpolateTracePosition(trace, interval.to_depth);
+        this.intervalAnchors.set(interval.id, {
+          position: interpolateTracePosition(trace, midDepth),
+          // Half the interval's own length, floored so a 0.5 m sample still
+          // gets a ring big enough to see.
+          radius: Math.max(start.distanceTo(end) / 2, 1.2),
+        });
+      }
 
       const built = buildHoleTube(
         trace, sampled, radius, DRILL_TUBE_RADIAL_SEGMENTS
@@ -197,6 +217,24 @@ export class AssayIntervals {
     }
   }
 
+  /**
+   * Points the 3D view at one sampled interval, by id.
+   *
+   * index.html has called this from the inspector's row-selection callback
+   * since the panel was written, but the method never existed -- so clicking a
+   * row threw a TypeError and nothing happened in the scene. Passing a null or
+   * unknown id clears the highlight, which is what deselecting should do.
+   */
+  highlightInterval(intervalId) {
+    if (!this.focusHighlight) return;
+    const anchor = intervalId ? this.intervalAnchors.get(intervalId) : null;
+    if (!anchor) {
+      this.focusHighlight.clear();
+      return;
+    }
+    this.focusHighlight.focusOn(anchor.position, anchor.radius);
+  }
+
   setLodStates(lodStates) {
     this.lodStates = lodStates;
     this.applyLodStates();
@@ -227,5 +265,6 @@ export class AssayIntervals {
     this.materials = [];
     this.holeMeshes.clear();
     this.intervalsData = [];
+    this.intervalAnchors.clear();
   }
 }

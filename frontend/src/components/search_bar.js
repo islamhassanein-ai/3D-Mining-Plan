@@ -18,6 +18,10 @@ const MAX_RESULTS = 12;
 // tight frame; a whole hole or trench needs enough room to read its length.
 const FRAME_RADIUS = { hole: 45, trench: 40, sample: 9 };
 
+// Radius of the pulse drawn on the hit, in metres. Smaller than the framing
+// radius so the ring sits ON the feature rather than ringing the whole view.
+const FOCUS_RADIUS = { hole: 6, trench: 6, sample: 2.5 };
+
 const KIND_META = {
   hole:   { tag: 'DD', color: '#e8c76b' },
   trench: { tag: 'TR', color: '#ff9d2b' },
@@ -132,6 +136,11 @@ export class SearchBar {
         outline: none;
       }
       .search-bar input:focus { border-color: var(--gold, #d4af37); }
+      .search-bar input.search-hit { animation: search-hit-flash 0.6s ease-out; }
+      @keyframes search-hit-flash {
+        0%   { border-color: var(--gold, #d4af37); box-shadow: 0 0 0 0 rgba(212, 175, 55, 0.55); }
+        100% { border-color: var(--border-light, #223049); box-shadow: 0 0 0 7px rgba(212, 175, 55, 0); }
+      }
       .search-bar input::placeholder { color: var(--text-faint, #5f7091); }
       .search-bar .search-icon {
         position: absolute; left: 8px; top: 50%; transform: translateY(-50%);
@@ -268,9 +277,27 @@ export class SearchBar {
   pick(entry) {
     if (!entry) return;
     this.viewport.controls.frameOn(entry.position, FRAME_RADIUS[entry.kind]);
+    // Moving the camera is not by itself an answer to "where is it" -- on a
+    // site with thirty holes the user is left diffing the before and after.
+    // Pulse the hit and leave a marker on it.
+    if (this.viewport.focusHighlight) {
+      this.viewport.focusHighlight.focusOn(entry.position, FOCUS_RADIUS[entry.kind]);
+    }
     this.close();
     this.input.value = entry.label;
+    this.flashInput();
     if (this.onPick) this.onPick(entry);
+  }
+
+  // Brief confirmation on the field itself, so pressing Enter visibly does
+  // something even when the target is already on screen and the camera barely
+  // moves -- otherwise the keypress looks like it was swallowed.
+  flashInput() {
+    if (!this.input) return;
+    this.input.classList.remove('search-hit');
+    // Forcing a reflow restarts the animation when picking twice in a row.
+    void this.input.offsetWidth;
+    this.input.classList.add('search-hit');
   }
 
   close() {

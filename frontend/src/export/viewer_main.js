@@ -28,6 +28,7 @@ import { BoreholeLabels } from '../scene/borehole_labels.js';
 import { TrenchLabels } from '../scene/trench_labels.js';
 import { LayerTogglePanel } from '../components/layer_toggles.js';
 import { SceneLegend } from '../components/scene_legend.js';
+import { FocusHighlight } from '../scene/focus_highlight.js';
 import { computeProjectSummary } from '../services/project_summary.js';
 import { StaticDataSource } from '../services/static_data_source.js';
 
@@ -104,6 +105,7 @@ async function initStaticViewer() {
     const wireframesRenderer         = new WireframesRenderer(scene);
     const structuralReadingsRenderer = new StructuralReadingsRenderer(scene);
     const coordinateFlag             = new CoordinateFlag(scene);
+    const focusHighlight             = new FocusHighlight(scene);
     const boreholeLabelsRenderer     = new BoreholeLabels(scene);
     const trenchLabelsRenderer       = new TrenchLabels(scene);
     const lodManager = new LodManager(camera, tracesRenderer, assaysRenderer, lithologiesRenderer);
@@ -134,7 +136,11 @@ async function initStaticViewer() {
       trenchLabelsRenderer,
       sceneLoader,
       lodManager,
+      focusHighlight,
     };
+
+    // Lets the inspector's row selection point at a sample in 3D.
+    assaysRenderer.focusHighlight = focusHighlight;
 
     // A standalone export is a single file that gets emailed around and opened
     // who-knows-where. Exposing the viewport gives whoever receives a "it's
@@ -165,9 +171,17 @@ async function initStaticViewer() {
     const orientationGizmo = new OrientationGizmo(camera, renderer, domContainer);
     let hover = null;
 
+    let lastFrameTime = performance.now();
     (function animate() {
       requestAnimationFrame(animate);
+      const now = performance.now();
+      // Clamped: a backgrounded tab resumes with a huge gap, which would skip
+      // the focus animation straight to its end.
+      const delta = Math.min((now - lastFrameTime) / 1000, 0.05);
+      lastFrameTime = now;
+
       controls.update();
+      focusHighlight.update(delta, camera);
       lodManager.update();
       boreholeLabelsRenderer.update(camera);
       trenchLabelsRenderer.update(camera);

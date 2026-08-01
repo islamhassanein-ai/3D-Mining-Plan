@@ -8,6 +8,11 @@ export class InspectorPanel {
     this.error = null;
     this.highlightedIntervalId = null; // To highlight a specific interval if clicked in 3D
     this.dataSource = options.dataSource || null;
+    // Fired when a downhole-log row is selected, so the 3D view can point at
+    // that sample. index.html has always passed this in, but the panel never
+    // stored it and never called it -- selecting a row highlighted the table
+    // row and did nothing in the scene.
+    this.onIntervalSelected = options.onIntervalSelected || null;
 
     this.init();
   }
@@ -133,28 +138,24 @@ export class InspectorPanel {
       .table-container tr:hover td {
         background: rgba(255, 255, 255, 0.02);
       }
+      /* The selected row drives the marker in the 3D view, so it has to be
+         findable after scrolling back to it. Gold rather than blue: it matches
+         the ring drawn on the sample in the scene, which is what ties the two
+         together. */
       .table-container tr.highlighted td {
-        background: rgba(59, 130, 246, 0.15) !important;
-        border-left: 2px solid #3b82f6;
+        background: rgba(212, 175, 55, 0.18) !important;
+        box-shadow: inset 0 0 0 9999px rgba(212, 175, 55, 0.04);
       }
+      .table-container tr.highlighted td:first-child {
+        border-left: 3px solid var(--gold, #d4af37);
+      }
+      .table-container tbody tr { cursor: pointer; }
+      .table-container tbody tr:hover td { background: rgba(255, 255, 255, 0.04); }
       .badge-assay {
         padding: 2px 6px;
         border-radius: 4px;
         font-weight: 700;
         font-size: 0.75rem;
-      }
-      /* Drilling method (DD / RC / TR / CH / FC) in the log's Type column. */
-      .badge-holetype {
-        display: inline-block;
-        padding: 1px 5px;
-        margin-right: 5px;
-        border-radius: 4px;
-        font-weight: 800;
-        font-size: 0.7rem;
-        letter-spacing: 0.3px;
-        color: var(--gold-soft, #e8c76b);
-        background: rgba(212, 175, 55, 0.13);
-        border: 1px solid rgba(212, 175, 55, 0.35);
       }
       .badge-lith {
         padding: 2px 6px;
@@ -171,27 +172,42 @@ export class InspectorPanel {
         margin-right: 6px;
         vertical-align: middle;
       }
-      /* Unsampled rows are visually recessive -- present and readable so the
-         depth log is continuous, but never competing with real assay data. */
+      /* Unsampled rows must be unmistakable. "Never assayed" and "assayed at
+         zero" are completely different geological statements, and the previous
+         treatment -- grey text over a barely-visible hatch -- made a gap read
+         as just another quiet row while scrolling. It now carries its own
+         amber tint and a left bar, so a gap is legible as a gap at a glance
+         without shouting louder than the grade values themselves. */
       .table-container tr.row-unsampled td {
-        color: #64748b;
-        background: repeating-linear-gradient(
-          45deg,
-          rgba(255,255,255,0.015) 0px,
-          rgba(255,255,255,0.015) 6px,
-          transparent 6px,
-          transparent 12px
-        );
+        color: #b9a06a;
+        background: rgba(212, 175, 55, 0.055);
+      }
+      .table-container tr.row-unsampled td:first-child {
+        border-left: 3px solid rgba(212, 175, 55, 0.6);
       }
       .badge-unsampled {
-        padding: 2px 6px;
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 2px 8px;
         border-radius: 4px;
-        font-weight: 700;
-        font-size: 0.7rem;
-        letter-spacing: 0.02em;
-        color: #94a3b8;
-        background: rgba(148, 163, 184, 0.12);
-        border: 1px dashed rgba(148, 163, 184, 0.45);
+        font-weight: 800;
+        font-size: 0.72rem;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: #e8c76b;
+        background: rgba(212, 175, 55, 0.16);
+        border: 1px dashed rgba(212, 175, 55, 0.65);
+      }
+      /* A small hollow square reads as "nothing here" next to the solid colour
+         chips the assay rows use. */
+      .badge-unsampled::before {
+        content: '';
+        width: 7px;
+        height: 7px;
+        border: 1.5px solid currentColor;
+        border-radius: 2px;
+        opacity: 0.9;
       }
       .badge-status {
         padding: 2px 8px;
@@ -340,7 +356,6 @@ export class InspectorPanel {
           <tr>
             <th>From (m)</th>
             <th>To (m)</th>
-            <th>Type</th>
             <th>Value</th>
           </tr>
         </thead>
@@ -351,7 +366,6 @@ export class InspectorPanel {
               <tr class="${isHighlighted ? 'highlighted' : ''} ${int.type === 'unsampled' ? 'row-unsampled' : ''}" data-interval-id="${int.interval_id || ''}">
                 <td style="font-weight:600">${int.from_depth.toFixed(2)}</td>
                 <td>${int.to_depth.toFixed(2)}</td>
-                <td>${this.renderIntervalType(int)}</td>
                 <td>${this.renderIntervalValue(int)}</td>
               </tr>
             `;
@@ -359,26 +373,6 @@ export class InspectorPanel {
         </tbody>
       </table>
     `;
-  }
-
-  // Type cell for one downhole-log row.
-  //
-  // This column used to show only the record kind ("assay", "lithology"),
-  // which reads as the *hole* type to anyone scanning the log -- and a column
-  // headed "Type" saying "assay" tells a geologist nothing they can't already
-  // see from the Value column next to it. It now leads with the drilling
-  // method from the collar record (DD, RC, TR, CH, FC) and keeps the record
-  // kind as secondary text, so the row answers "what kind of hole, logged
-  // how".
-  renderIntervalType(int) {
-    const method = (this.data && this.data.hole_type) || null;
-    const kind = int.type === 'unsampled' ? 'No Sample'
-      : int.type === 'assay' ? 'Assay'
-      : 'Lithology';
-    const methodTag = method
-      ? `<span class="badge-holetype">${method}</span>`
-      : '';
-    return `${methodTag}<span style="color:#94a3b8;font-size:0.7rem;">${kind}</span>`;
   }
 
   // Value cell for one downhole-log row. Unsampled rows are their own case:
@@ -494,10 +488,13 @@ export class InspectorPanel {
     rows.forEach(row => {
       row.addEventListener('click', () => {
         const intId = row.getAttribute('data-interval-id');
-        if (intId) {
-          this.highlightedIntervalId = intId;
-          this.render();
-        }
+        if (!intId) return;
+        // Clicking the selected row again deselects it, which is the only way
+        // to clear the 3D marker without picking some other sample.
+        const next = this.highlightedIntervalId === intId ? null : intId;
+        this.highlightedIntervalId = next;
+        this.render();
+        if (this.onIntervalSelected) this.onIntervalSelected(next);
       });
     });
 

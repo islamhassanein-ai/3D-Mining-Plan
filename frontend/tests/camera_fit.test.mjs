@@ -98,6 +98,16 @@ test('bounds use up-to-date world matrices, not stale ones', () => {
     `bounds must not stretch back to the world origin (got ${Math.round(size.z)} m)`
   );
   assert.ok(bounds.min.x > 1000, 'bounds must sit at the site, not near zero');
+
+  // The sampled point cloud feeds the fit, so it has to be safe on the same
+  // count -- a refactor once moved the matrix refresh onto the bounds path
+  // only, and the fit went back to parking the camera millions of metres out.
+  for (const point of loader.visiblePoints()) {
+    assert.ok(
+      Math.abs(point.x) > 1000 && Math.abs(point.z) > 1000,
+      'no sampled point may sit at the world origin'
+    );
+  }
 });
 
 test('fitCameraToData frames the data and records a home pose', () => {
@@ -111,23 +121,52 @@ test('fitCameraToData frames the data and records a home pose', () => {
 
   assert.ok(controls.home, 'a home pose must be stored for Reset Camera');
 
-  // Every corner of the data must land inside the frustum, and the fit must be
-  // tight enough that the data actually fills it -- the previous fit left the
-  // model at roughly half the frame.
+  // No geometry may be clipped, and the fit must be tight enough that the data
+  // actually fills the frame -- the old fit left the model at about half of it.
+  //
+  // This checks the sampled geometry, not the bounding box: a box corner can
+  // sit in empty space, and requiring those on screen is what kept the camera
+  // too far out in the first place. What must never be clipped is something
+  // the user can see.
   camera.updateMatrixWorld(true);
-  const bounds = loader.visibleBounds();
   let maxAbs = 0;
-  for (const x of [bounds.min.x, bounds.max.x]) {
-    for (const y of [bounds.min.y, bounds.max.y]) {
-      for (const z of [bounds.min.z, bounds.max.z]) {
-        const ndc = new THREE.Vector3(x, y, z).project(camera);
-        assert.ok(
-          Math.abs(ndc.x) <= 1 && Math.abs(ndc.y) <= 1,
-          `corner (${x}, ${y}, ${z}) falls outside the viewport`
-        );
-        maxAbs = Math.max(maxAbs, Math.abs(ndc.x), Math.abs(ndc.y));
-      }
-    }
+  for (const point of loader.visiblePoints()) {
+    const ndc = point.clone().project(camera);
+    assert.ok(
+      Math.abs(ndc.x) <= 1 && Math.abs(ndc.y) <= 1,
+      `geometry at (${Math.round(point.x)}, ${Math.round(point.y)}, ${Math.round(point.z)}) is clipped`
+    );
+    maxAbs = Math.max(maxAbs, Math.abs(ndc.x), Math.abs(ndc.y));
   }
-  assert.ok(maxAbs > 0.8, `data should fill the frame (widest corner at ${maxAbs.toFixed(2)})`);
+  assert.ok(maxAbs > 0.8, `data should fill the frame (widest point at ${maxAbs.toFixed(2)})`);
+});
+
+test('the fit centres the geometry, not its bounding box', () => {
+  const { camera, loader, scene } = makeLoader();
+
+  const traces = new DrillholeTraces(scene);
+  traces.render([plannedHole()]);
+
+  loader.fitCameraToData();
+  camera.updateMatrixWorld(true);
+
+  // Framing the box's eight corners centres an empty box: its lower corners
+  // span the whole footprint at the depth of the deepest hole, so they project
+  // below anything real and shove the visible geometry up the screen. Measured
+  // in the app at NDC Y centred on +0.32 -- visibly high. The fit works from
+  // sampled vertices now, so what's on screen is what gets centred.
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  for (const point of loader.visiblePoints()) {
+    const ndc = point.clone().project(camera);
+    minX = Math.min(minX, ndc.x); maxX = Math.max(maxX, ndc.x);
+    minY = Math.min(minY, ndc.y); maxY = Math.max(maxY, ndc.y);
+  }
+
+  const centreX = (minX + maxX) / 2;
+  const centreY = (minY + maxY) / 2;
+  assert.ok(Math.abs(centreX) < 0.1, `geometry should be centred horizontally (at ${centreX.toFixed(2)})`);
+  assert.ok(Math.abs(centreY) < 0.1, `geometry should be centred vertically (at ${centreY.toFixed(2)})`);
+
+  const fill = Math.max(maxX - minX, maxY - minY) / 2;
+  assert.ok(fill > 0.8, `geometry should fill the frame (fills ${fill.toFixed(2)})`);
 });

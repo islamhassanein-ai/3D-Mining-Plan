@@ -20,6 +20,7 @@ import { StructuralReadingsRenderer } from './structural_readings.js';
 import { LodManager } from './lod_manager.js';
 import { OrientationGizmo } from './orientation_gizmo.js';
 import { CoordinateFlag } from './coordinate_flag.js';
+import { FocusHighlight } from './focus_highlight.js';
 import { BoreholeLabels } from './borehole_labels.js';
 import { TrenchLabels } from './trench_labels.js';
 import { ImportPanel } from '../components/import_panel.js';
@@ -108,6 +109,9 @@ export function init3DViewport(container, options = {}) {
   const wireframesRenderer = new WireframesRenderer(scene);
   const structuralReadingsRenderer = new StructuralReadingsRenderer(scene);
   const coordinateFlag = new CoordinateFlag(scene);
+  const focusHighlight = new FocusHighlight(scene);
+  // Lets the inspector's row selection point at a sample in 3D.
+  assaysRenderer.focusHighlight = focusHighlight;
   const boreholeLabelsRenderer = new BoreholeLabels(scene);
   const trenchLabelsRenderer = new TrenchLabels(scene);
 
@@ -157,9 +161,17 @@ export function init3DViewport(container, options = {}) {
   // 12. Animation render loop
   let animationFrameId = null;
   let hover = null;
+  let lastFrameTime = performance.now();
   function animate() {
     animationFrameId = requestAnimationFrame(animate);
+    const now = performance.now();
+    // Clamped: a backgrounded tab resumes with a huge gap, which would skip
+    // the focus animation straight to its end.
+    const delta = Math.min((now - lastFrameTime) / 1000, 0.05);
+    lastFrameTime = now;
+
     controls.update();
+    focusHighlight.update(delta, camera);
     lodManager.update();
     boreholeLabelsRenderer.update(camera);
     trenchLabelsRenderer.update(camera);
@@ -223,6 +235,7 @@ export function init3DViewport(container, options = {}) {
     wireframesRenderer,
     structuralReadingsRenderer,
     coordinateFlag,
+    focusHighlight,
     boreholeLabelsRenderer,
     trenchLabelsRenderer,
     sceneLoader,
@@ -242,6 +255,7 @@ export function init3DViewport(container, options = {}) {
       wireframesRenderer.clear();
       structuralReadingsRenderer.clear();
       coordinateFlag.dispose();
+      focusHighlight.dispose();
       boreholeLabelsRenderer.clear();
       trenchLabelsRenderer.clear();
       renderer.dispose();
