@@ -246,9 +246,26 @@ export class DepthPlannerPanel {
       this.container.querySelector('#dp-to').value = samples[samples.length - 1].from_depth ?? 0;
       this.loadTrench();
     }
+    // Pre-select by PROXIMITY to the zone, never "all". Averaging every
+    // reading in a project mixes unrelated structures -- a bedding and a shear
+    // and a joint -- into one meaningless mean plane, and the resulting depth
+    // looks just as authoritative as a good one. Three nearby readings is the
+    // most a projection like this can honestly lean on; the geologist adjusts
+    // the selection from there.
     if (this.readings.length) {
+      const anchor = {
+        easting: Number(this.container.querySelector('#dp-top-e').value),
+        northing: Number(this.container.querySelector('#dp-top-n').value),
+        elevation: Number(this.container.querySelector('#dp-top-z').value)
+      };
+      const ranked = this.readings
+        .map((r, i) => ({ i, d: distanceTo(r, anchor) }))
+        .sort((a, b) => a.d - b.d)
+        .slice(0, 3)
+        .map(x => x.i);
+
       const select = this.container.querySelector('#dp-readings');
-      for (const opt of select.options) opt.selected = true;
+      for (const opt of select.options) opt.selected = ranked.includes(Number(opt.value));
       this.loadReadings();
     }
     // Collar defaults to an existing planned hole if the project has one --
@@ -628,6 +645,15 @@ export class DepthPlannerPanel {
   isOpen() {
     return this.container.classList.contains('open');
   }
+}
+
+/** 3D distance from a structural reading to the zone anchor, for ranking. */
+function distanceTo(reading, anchor) {
+  if (!Number.isFinite(anchor.easting) || !Number.isFinite(anchor.northing)) return Infinity;
+  const de = Number(reading.easting) - anchor.easting;
+  const dn = Number(reading.northing) - anchor.northing;
+  const dz = Number(reading.elevation) - (Number.isFinite(anchor.elevation) ? anchor.elevation : Number(reading.elevation));
+  return Math.sqrt(de * de + dn * dn + dz * dz);
 }
 
 function round(v, dp) {
