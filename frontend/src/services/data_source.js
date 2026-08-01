@@ -32,9 +32,6 @@ export class ApiDataSource {
   }
   async getScene() { return ApiClient.getProjectScene(this.projectId); }
   async getCollarDetails(collarId) { return ApiClient.getCollarDetails(collarId); }
-  async getTrueThickness(collarId, intervalId, dipDirection, dip) {
-    return ApiClient.getTrueThickness(collarId, intervalId, dipDirection, dip);
-  }
   async getTopographyPoints(topographyRef) { return _fetchTopographyPoints(topographyRef); }
   async getWireframeGeometry(wireframe) { return _fetchWireframeGeometry(wireframe); }
 }
@@ -46,9 +43,6 @@ export class ShareTokenDataSource {
   }
   async getScene() { return ApiClient.getSharedScene(this.token); }
   async getCollarDetails(collarId) { return ApiClient.getSharedCollar(this.token, collarId); }
-  async getTrueThickness(collarId, intervalId, dipDirection, dip) {
-    return ApiClient.getSharedTrueThickness(this.token, collarId, intervalId, dipDirection, dip);
-  }
   async getTopographyPoints(topographyRef) { return _fetchTopographyPoints(topographyRef); }
   async getWireframeGeometry(wireframe) { return _fetchWireframeGeometry(wireframe); }
 }

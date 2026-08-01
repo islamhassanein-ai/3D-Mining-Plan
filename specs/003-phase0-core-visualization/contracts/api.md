@@ -49,10 +49,13 @@ response schemas belong in the implementation (Pydantic models), not duplicated 
   coordinates, full survey list, full assay and lithology interval tables. Must
   include every field listed for these entities in `data-model.md` (SC-004 — zero
   missing fields).
-- `GET /collars/{collar_id}/true-thickness?interval_id=...` — computed true
-  thickness for a given assay interval, using the collar's survey dip at that depth
-  (FR-018). Returns an explicit "unavailable" result (not a fabricated number) when
-  dip data is missing (per spec Edge Cases).
+- ~~`GET /collars/{collar_id}/true-thickness?interval_id=...`~~ — **removed
+  2026-08-01.** Computed true thickness for a given assay interval, using the
+  collar's survey dip at that depth (FR-018). Deleted along with the True
+  Thickness Calculator UI that was its only caller; see the note in
+  `specs/006-standalone-html-export/contracts/api.md` section 4. FR-018 is
+  therefore no longer implemented — reinstating it means rebuilding both the
+  endpoint and a UI for it.
 
 ## Supplementary Data
 

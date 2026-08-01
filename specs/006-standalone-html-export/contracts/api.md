@@ -247,6 +247,18 @@ user-facing text assigned at runtime from the payload via `textContent`.
 
 ## 4. Frontend Interface — `SceneDataSource`
 
+> **Superseded (2026-08-01): `getTrueThickness` no longer exists.** The True
+> Thickness Calculator was removed from the inspector, leaving the whole path
+> — the `GET /collars/{id}/true-thickness` and
+> `GET /share/{token}/collars/{id}/true-thickness` endpoints, the JS/Python
+> implementations, the parity fixture and its two test suites — with no
+> caller, so all of it was deleted. `SceneDataSource` is now the four methods
+> `getScene`, `getCollarDetails`, `getTopographyPoints` and
+> `getWireframeGeometry`, plus `isStatic`; `StaticDataSource` has no imports
+> at all. Section 5 below describes a fixture that no longer exists. The rest
+> of this section is left as the record of what feature 006 delivered — do not
+> implement `getTrueThickness` from it.
+
 `ApiDataSource` and `ShareTokenDataSource` live in
 `frontend/src/services/data_source.js`.
 `StaticDataSource` lives in `frontend/src/services/static_data_source.js` and
@@ -290,7 +302,7 @@ hole_azimuth, vein_dip_direction, vein_dip, intersection_angle_deg}`.
 
 ---
 
-## 5. True-Thickness Parity Fixture
+## 5. True-Thickness Parity Fixture *(removed — see the note in section 4)*
 
 `specs/006-standalone-html-export/fixtures/true_thickness_vectors.json` — consumed
 unchanged by `backend/tests/unit/test_true_thickness_vectors.py` and
