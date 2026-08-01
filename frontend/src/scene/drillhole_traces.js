@@ -1,5 +1,23 @@
 import * as THREE from 'three';
 
+// A planned hole is a proposal, not a result, and the two must never be
+// confused at a glance. The signal is a bright red ball sitting on the collar
+// -- unmistakable at any zoom, and the only sphere in the scene -- with a
+// near-black dashed trace hanging beneath it.
+//
+// Pure black would vanish against the #0b0f19 viewport, so the dash is drawn
+// twice: an unlit near-black core over a slightly wider, faint light halo.
+// The pair reads as "a black dashed line" while staying legible on the dark
+// background, and the halo also keeps it visible where the trace crosses the
+// dark underside of the topography surface.
+const PLANNED_COLLAR_COLOR = 0xff2b2b;
+const PLANNED_TRACE_COLOR = 0x0a0a0a;
+const PLANNED_HALO_COLOR = 0xc8d2e0;
+
+// Collar sphere radius in metres. Small enough not to swallow nearby drilled
+// collars on a tight pattern, large enough to spot from the default framing.
+const PLANNED_COLLAR_RADIUS = 1.6;
+
 export class DrillholeTraces {
   constructor(scene) {
     this.scene = scene;
@@ -30,19 +48,30 @@ export class DrillholeTraces {
       opacity: 0.8
     });
 
-    // Planned holes: dashed and cooler-toned, so a proposed trajectory is
-    // never mistaken for a hole that has actually been drilled. Dashes need
-    // computeLineDistances() on the geometry (below) to show up at all.
+    // Planned holes: black dashed trace. Dashes need computeLineDistances()
+    // on the geometry (below) to show up at all.
     const plannedMaterial = new THREE.LineDashedMaterial({
-      color: 0x67e8f9,
+      color: PLANNED_TRACE_COLOR,
       linewidth: 2,
-      transparent: true,
-      opacity: 0.85,
       dashSize: 3.0,
       gapSize: 2.0
     });
+    // Drawn first and slightly out of phase so it peeks out around the black
+    // core rather than being hidden underneath it.
+    const plannedHaloMaterial = new THREE.LineDashedMaterial({
+      color: PLANNED_HALO_COLOR,
+      transparent: true,
+      opacity: 0.45,
+      dashSize: 3.6,
+      gapSize: 1.4
+    });
+    const plannedCollarMaterial = new THREE.MeshBasicMaterial({
+      color: PLANNED_COLLAR_COLOR
+    });
 
-    this.materials = [drilledMaterial, plannedMaterial];
+    this.materials = [
+      drilledMaterial, plannedMaterial, plannedHaloMaterial, plannedCollarMaterial
+    ];
 
     for (const dh of drillholes) {
       const points = [];
@@ -66,7 +95,35 @@ export class DrillholeTraces {
         type: 'drillhole_trace'
       };
 
-      (isPlanned ? this.plannedGroup : this.group).add(line);
+      const target = isPlanned ? this.plannedGroup : this.group;
+
+      if (isPlanned) {
+        const halo = new THREE.Line(geometry.clone(), plannedHaloMaterial);
+        halo.computeLineDistances();
+        halo.renderOrder = 0;
+        // Purely decorative: it must not intercept picking, and it must not
+        // widen the camera fit beyond the trace it traces.
+        halo.raycast = () => {};
+        halo.userData = { excludeFromFit: true };
+        target.add(halo);
+        line.renderOrder = 1;
+
+        const collar = new THREE.Mesh(
+          new THREE.SphereGeometry(PLANNED_COLLAR_RADIUS, 16, 12),
+          plannedCollarMaterial
+        );
+        collar.position.copy(points[0]);
+        collar.renderOrder = 2;
+        collar.userData = {
+          collar_id: dh.collar_id,
+          hole_id: dh.hole_id,
+          hole_status: 'planned',
+          type: 'drillhole_trace'
+        };
+        target.add(collar);
+      }
+
+      target.add(line);
       this.tracesMap.set(dh.collar_id, line);
     }
   }
@@ -78,11 +135,9 @@ export class DrillholeTraces {
 
   clear() {
     for (const group of [this.group, this.plannedGroup]) {
-      // Traverse and dispose geometries
+      // Traverse and dispose geometries (lines, halo clones, collar spheres)
       group.traverse((child) => {
-        if (child.isLine) {
-          if (child.geometry) child.geometry.dispose();
-        }
+        if (child.geometry) child.geometry.dispose();
       });
       // Remove all children
       while (group.children.length > 0) {

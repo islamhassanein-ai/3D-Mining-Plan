@@ -1,8 +1,12 @@
 import * as THREE from 'three';
 import {
   isUnsampled,
+  getGradeBucketIndex,
   DRILL_TUBE_RADIUS,
+  DRILL_TUBE_RADIUS_BY_BUCKET,
+  DRILL_TUBE_RADIUS_UNSAMPLED,
   DRILL_TUBE_RADIAL_SEGMENTS,
+  UNSAMPLED_BUCKET_INDEX,
 } from './grade_scale.js';
 import { buildHoleTube } from './tube_builder.js';
 
@@ -43,6 +47,13 @@ export class AssayIntervals {
     this.currentCutoff = 0.0;
     this.lodStates = null;       // Map<collar_id, boolean>; null = LOD inactive
 
+    // 'uniform' (default, Leapfrog convention -- grade is colour only) or
+    // 'grade' (diameter also steps with the grade bucket). Switching modes
+    // rebuilds the tube geometry, so the last rendered drillholes are kept
+    // to replay the build without a round trip to the API.
+    this.thicknessMode = 'uniform';
+    this.lastDrillholes = null;
+
     this.materials = [];
     // `mesh` / `plannedMesh` are kept as aliases so the layer panel and any
     // other consumer that expects a single toggleable object still works.
@@ -52,7 +63,9 @@ export class AssayIntervals {
 
   render(drillholes) {
     this.clear();
+    this.lastDrillholes = drillholes;
 
+    const radius = this._radiusResolver();
     const drilledMaterial = this._buildMaterial(false);
     const plannedMaterial = this._buildMaterial(true);
     this.materials = [drilledMaterial, plannedMaterial];
@@ -88,7 +101,7 @@ export class AssayIntervals {
       this.intervalsData.push(...sampled);
 
       const built = buildHoleTube(
-        trace, sampled, DRILL_TUBE_RADIUS, DRILL_TUBE_RADIAL_SEGMENTS
+        trace, sampled, radius, DRILL_TUBE_RADIAL_SEGMENTS
       );
       if (!built) continue;
 
@@ -111,6 +124,32 @@ export class AssayIntervals {
     }
 
     this.applyLodStates();
+  }
+
+  // A constant in 'uniform' mode, a per-interval lookup in 'grade' mode.
+  // buildHoleTube accepts either form.
+  _radiusResolver() {
+    if (this.thicknessMode !== 'grade') return DRILL_TUBE_RADIUS;
+    return (interval) => {
+      const idx = getGradeBucketIndex(
+        interval.grade_value, interval.grade_unit, interval.sample_id
+      );
+      if (idx === UNSAMPLED_BUCKET_INDEX) return DRILL_TUBE_RADIUS_UNSAMPLED;
+      return DRILL_TUBE_RADIUS_BY_BUCKET[idx];
+    };
+  }
+
+  // 'uniform' | 'grade'. Rebuilds from the last rendered drillholes, so it is
+  // safe to call before any data has loaded (it becomes a no-op).
+  setThicknessMode(mode) {
+    const next = mode === 'grade' ? 'grade' : 'uniform';
+    if (next === this.thicknessMode) return;
+    this.thicknessMode = next;
+    if (this.lastDrillholes) {
+      const cutoff = this.currentCutoff;
+      this.render(this.lastDrillholes);
+      this.setGradeCutoff(cutoff);
+    }
   }
 
   _buildMaterial(planned) {

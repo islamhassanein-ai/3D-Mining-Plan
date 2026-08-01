@@ -6,6 +6,12 @@
   <title>MALLOGRIM GOLD MINE &mdash; 3D Mining Plan</title>
   <link rel="icon" href="assets/MGM.jpeg">
   <link rel="stylesheet" href="styles/app.css">
+  <script>
+    // Applied before first paint so a light-mode user never sees a dark
+    // flash while the bundle loads. Dark is the default.
+    document.documentElement.dataset.theme =
+      localStorage.getItem('app_theme') === 'light' ? 'light' : 'dark';
+  </script>
 </head>
 <body>
   <div class="app-layout">
@@ -24,6 +30,7 @@
           <div class="sub">Drillhole &bull; Trench &bull; Vein Interpretation Visualizer</div>
         </div>
       </div>
+      <div class="header-right">
       <div class="meta" id="header-stats" style="display:none;">
         <div class="meta-group">
           <span class="meta-group-label">DD</span>
@@ -40,6 +47,15 @@
           <div><b id="tr-sum-avg">0</b>Avg g/t</div>
           <div><b id="tr-sum-peak" class="gold-val">0</b>Peak g/t</div>
         </div>
+      </div>
+      <div id="theme-toggle" role="group" aria-label="Colour theme">
+        <button type="button" data-theme-set="dark" title="Dark theme" aria-label="Dark theme">
+          <svg viewBox="0 0 24 24"><path fill="currentColor" d="M17.75,4.09L15.22,6.03L16.13,9.09L13.5,7.28L10.87,9.09L11.78,6.03L9.25,4.09L12.44,4L13.5,1L14.56,4L17.75,4.09M21.25,11L19.61,12.25L20.2,14.23L18.5,13.06L16.8,14.23L17.39,12.25L15.75,11L17.81,10.95L18.5,9L19.19,10.95L21.25,11M18.97,15.95C19.8,15.87 20.69,17.05 20.16,17.8C19.84,18.25 19.5,18.67 19.08,19.07C15.17,23 8.84,23 4.94,19.07C1.03,15.17 1.03,8.83 4.94,4.93C5.34,4.53 5.76,4.17 6.21,3.85C6.96,3.32 8.14,4.21 8.06,5.04C7.79,7.9 8.75,10.87 10.95,13.06C13.14,15.26 16.1,16.22 18.97,15.95Z"/></svg>
+        </button>
+        <button type="button" data-theme-set="light" title="Light theme" aria-label="Light theme">
+          <svg viewBox="0 0 24 24"><path fill="currentColor" d="M12,8A4,4 0 0,0 8,12A4,4 0 0,0 12,16A4,4 0 0,0 16,12A4,4 0 0,0 12,8M12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6A6,6 0 0,1 18,12A6,6 0 0,1 12,18M20,8.69V4H15.31L12,0.69L8.69,4H4V8.69L0.69,12L4,15.31V20H8.69L12,23.31L15.31,20H20V15.31L23.31,12L20,8.69Z"/></svg>
+        </button>
+      </div>
       </div>
     </div>
 
@@ -75,15 +91,22 @@
           <div class="control-card">
             <span class="control-label">Au Grade Scale (g/t)</span>
             <div class="grade-legend">
-              <div class="grade-item"><span class="sw" style="background:#ff2bd6"></span> 3.00 &ndash; &infin; <b>High</b></div>
-              <div class="grade-item"><span class="sw" style="background:#ff5a1f"></span> 1.00 &ndash; 3.00</div>
-              <div class="grade-item"><span class="sw" style="background:#ffc233"></span> 0.50 &ndash; 1.00</div>
-              <div class="grade-item"><span class="sw" style="background:#21d07a"></span> 0.30 &ndash; 0.50</div>
-              <div class="grade-item"><span class="sw" style="background:#2b7fff"></span> 0.10 &ndash; 0.30</div>
-              <div class="grade-item"><span class="sw" style="background:#9aa7b8"></span> 0.00 &ndash; 0.10</div>
+              <div class="grade-item"><span class="sw" style="background:#e838ff"></span> 3.00 &ndash; &infin; <b>High</b></div>
+              <div class="grade-item"><span class="sw" style="background:#f5222d"></span> 1.00 &ndash; 3.00</div>
+              <div class="grade-item"><span class="sw" style="background:#ffd21e"></span> 0.50 &ndash; 1.00</div>
+              <div class="grade-item"><span class="sw" style="background:#00e57a"></span> 0.30 &ndash; 0.50</div>
+              <div class="grade-item"><span class="sw" style="background:#1f6fff"></span> 0.10 &ndash; 0.30</div>
+              <div class="grade-item"><span class="sw" style="background:#94a3b8"></span> 0.00 &ndash; 0.10</div>
               <div class="grade-item"><span class="sw" style="background:#141414;border:1px dashed #64748b"></span> No Sample <b>Gap</b></div>
             </div>
-            <p style="font-size:10px;color:var(--text-faint);line-height:1.5;margin:6px 0 0 0;">Interval tubes render at a uniform diameter along the desurveyed trajectory &mdash; grade is shown by colour. Unsampled zones show the bare trace only.</p>
+            <p style="font-size:10px;color:var(--text-faint);line-height:1.5;margin:6px 0 0 0;">Interval tubes follow the desurveyed trajectory at a uniform diameter &mdash; grade is shown by colour. Unsampled zones show the bare trace only. Switch on below to make the diameter step with grade as well.</p>
+            <div class="layer-toggle-row" style="margin-top:8px;border-top:1px solid rgba(255,255,255,0.06);border-bottom:none;padding-top:8px;">
+              <span class="lbl">Scale thickness by grade</span>
+              <label class="layer-switch">
+                <input type="checkbox" id="grade-thickness-toggle">
+                <span class="layer-slider"></span>
+              </label>
+            </div>
           </div>
 
           <!-- Layer Toggles -->
@@ -193,6 +216,9 @@
 
       <!-- Camera Toolbar overlay -->
       <div id="toolbar-3d-container" class="floating-toolbar"></div>
+
+      <!-- Click-to-toggle legend, bottom-left over the canvas -->
+      <div id="scene-legend-container"></div>
     </main>
 
     <!-- Right Sidebar (Inspector) -->
@@ -229,6 +255,7 @@
           <div class="kbd-row"><span>Section, North&ndash;South</span><kbd>N</kbd></div>
           <div class="kbd-row"><span>Section, East&ndash;West</span><kbd>E</kbd></div>
           <div class="kbd-row"><span>Isometric view</span><kbd>I</kbd></div>
+          <div class="kbd-row"><span>Reset camera to fit</span><kbd>R</kbd></div>
         </div>
         <div>
           <div class="section-title" style="margin-bottom:8px;">3D Navigation</div>
@@ -246,7 +273,7 @@
     </div>
   </div>
 
-  <script src="dist/bundle.js?v=17"></script>
+  <script src="dist/bundle.js?v=18"></script>
   <script>
     // Initialize application logic
     const API_BASE = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') ? 'http://localhost:8000' : '';
@@ -290,6 +317,8 @@
         }
       }
       
+      setupThemeToggle();
+
       // Viewport hint card dismiss
       document.getElementById('hint-close-btn').addEventListener('click', () => {
         document.getElementById('viewport-hint-card').style.display = 'none';
@@ -506,7 +535,13 @@
               inspector.loadCollar(data.collarId, data.intervalId);
             } else if (type === 'trace') {
               inspector.loadCollar(data.collarId);
+            } else {
+              return;
             }
+            // Picking a hole is a request to read it, so the inspector has to
+            // be on screen -- otherwise the click silently loads a panel the
+            // user collapsed earlier and appears to do nothing.
+            revealInspector();
           }
         });
         
@@ -522,9 +557,7 @@
         document.querySelectorAll('.vbtn[data-preset]').forEach(btn => {
           btn.onclick = () => viewport3D.controls.setPreset(btn.dataset.preset);
         });
-        document.getElementById('reset-camera-btn').onclick = () => {
-          viewport3D.sceneLoader.fitCameraToData(data.drillholes);
-        };
+        document.getElementById('reset-camera-btn').onclick = () => toolbar.resetCamera();
 
         // Wire Go-to-Coordinate + Coordinate System controls
         setupGotoCoordinate(viewport3D, data);
@@ -537,7 +570,9 @@
         // Setup Layer Toggles
         const layerContainer = document.getElementById('layer-toggles-container');
         layerContainer.innerHTML = '';
-        new window.LayerTogglePanel(layerContainer, viewport3D);
+        setupLayersAndLegend(viewport3D, layerContainer);
+        setupThicknessToggle(viewport3D);
+        applyTheme(document.documentElement.dataset.theme);
 
         // Setup Cutoff Slider + live grade-distribution histogram
         const sliderContainer = document.getElementById('cutoff-slider-container');
@@ -606,6 +641,105 @@
         loading.style.display = 'none';
         window.toast.error(err.message, { title: 'Failed to load project' });
       }
+    }
+
+    // Light/dark switch. The DOM side is entirely CSS custom properties on
+    // <html data-theme>; the WebGL viewport has no cascade, so it's told
+    // separately via viewport3D.setTheme(). Grade colours never change -- see
+    // the LIGHT THEME block in styles/app.css.
+    function applyTheme(theme) {
+      const next = theme === 'light' ? 'light' : 'dark';
+      document.documentElement.dataset.theme = next;
+      localStorage.setItem('app_theme', next);
+      document.querySelectorAll('#theme-toggle button').forEach(b => {
+        b.classList.toggle('active', b.dataset.themeSet === next);
+      });
+      if (viewport3D && viewport3D.setTheme) viewport3D.setTheme(next);
+    }
+
+    function setupThemeToggle() {
+      document.querySelectorAll('#theme-toggle button').forEach(b => {
+        b.addEventListener('click', () => applyTheme(b.dataset.themeSet));
+      });
+      applyTheme(document.documentElement.dataset.theme);
+    }
+
+    // The inspector lives in a collapsible right panel that starts hidden.
+    // Anything that loads a hole into it has to make sure it's on screen.
+    function revealInspector() {
+      const appBody = document.getElementById('app-body');
+      if (!appBody.classList.contains('hide-right')) return;
+      appBody.classList.remove('hide-right');
+      document.getElementById('right-edge-tab').innerHTML = '&#9654;';
+      // Keep the WebGL canvas in step with the panel slide.
+      const start = performance.now();
+      const tick = () => {
+        window.dispatchEvent(new Event('resize'));
+        if (performance.now() - start < 300) requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    }
+
+    // The sidebar "Layers" panel and the floating scene legend are two views
+    // of one visibility state, so each has to push its changes into the
+    // other. The legend carries four coarse groups; the panel is finer, so
+    // "DD (Drillholes)" fans out to the trace/assay/lithology layers and
+    // comes back on if ANY of them is on.
+    const LEGEND_TO_LAYERS = {
+      trenches:   ['trenches'],
+      drillholes: ['traces', 'assays', 'lithology'],
+      planned:    ['planned'],
+      topography: ['topography'],
+    };
+
+    function setupLayersAndLegend(viewport3D, layerContainer) {
+      let legend = null;
+
+      const layers = new window.LayerTogglePanel(layerContainer, viewport3D, {
+        onChange: (key, visible) => {
+          if (!legend) return;
+          for (const [legendKey, layerKeys] of Object.entries(LEGEND_TO_LAYERS)) {
+            if (!layerKeys.includes(key)) continue;
+            const anyOn = layerKeys.some(k => layers.state[k]);
+            legend.setVisible(legendKey, anyOn, { silent: true });
+          }
+        }
+      });
+
+      const legendContainer = document.getElementById('scene-legend-container');
+      legendContainer.innerHTML = '';
+      legend = new window.SceneLegend(legendContainer, viewport3D, {
+        onToggle: (key, visible) => {
+          for (const layerKey of (LEGEND_TO_LAYERS[key] || [])) {
+            layers.setVisible(layerKey, visible);
+          }
+        }
+      });
+      legend.setSurfaceDerived(!!viewport3D.sceneLoader.surfaceDerived);
+
+      // The panel's own defaults (labels off, etc.) win at startup, so push
+      // them into the legend before either is shown.
+      Object.entries(LEGEND_TO_LAYERS).forEach(([legendKey, layerKeys]) => {
+        legend.setVisible(legendKey, layerKeys.some(k => layers.state[k]), { silent: true });
+      });
+
+      return { layers, legend };
+    }
+
+    // Opt-in second visual channel for grade: interval diameter steps with
+    // the grade bucket on top of the colour. Off by default -- see
+    // frontend/src/scene/grade_scale.js for why uniform is the default.
+    function setupThicknessToggle(viewport3D) {
+      const input = document.getElementById('grade-thickness-toggle');
+      if (!input) return;
+      input.checked = localStorage.getItem('grade_thickness_mode') === 'grade';
+      const apply = () => {
+        const mode = input.checked ? 'grade' : 'uniform';
+        localStorage.setItem('grade_thickness_mode', mode);
+        viewport3D.assaysRenderer.setThicknessMode(mode);
+      };
+      input.onchange = apply;
+      apply();
     }
 
     function setupTopoModeToggle(viewport3D) {
@@ -841,7 +975,13 @@
               inspector.loadCollar(data.collarId, data.intervalId);
             } else if (type === 'trace') {
               inspector.loadCollar(data.collarId);
+            } else {
+              return;
             }
+            // Picking a hole is a request to read it, so the inspector has to
+            // be on screen -- otherwise the click silently loads a panel the
+            // user collapsed earlier and appears to do nothing.
+            revealInspector();
           }
         });
         
@@ -857,9 +997,7 @@
         document.querySelectorAll('.vbtn[data-preset]').forEach(btn => {
           btn.onclick = () => viewport3D.controls.setPreset(btn.dataset.preset);
         });
-        document.getElementById('reset-camera-btn').onclick = () => {
-          viewport3D.sceneLoader.fitCameraToData(data.drillholes);
-        };
+        document.getElementById('reset-camera-btn').onclick = () => toolbar.resetCamera();
 
         // Wire Go-to-Coordinate; UTM zone is an owner-only setting, so hide
         // that control for shared/read-only viewers instead of wiring it.
@@ -873,7 +1011,9 @@
         // Setup Layer Toggles
         const layerContainer = document.getElementById('layer-toggles-container');
         layerContainer.innerHTML = '';
-        new window.LayerTogglePanel(layerContainer, viewport3D);
+        setupLayersAndLegend(viewport3D, layerContainer);
+        setupThicknessToggle(viewport3D);
+        applyTheme(document.documentElement.dataset.theme);
 
         // Setup Cutoff Slider + live grade-distribution histogram
         const sliderContainer = document.getElementById('cutoff-slider-container');

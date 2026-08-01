@@ -143,6 +143,19 @@ export class InspectorPanel {
         font-weight: 700;
         font-size: 0.75rem;
       }
+      /* Drilling method (DD / RC / TR / CH / FC) in the log's Type column. */
+      .badge-holetype {
+        display: inline-block;
+        padding: 1px 5px;
+        margin-right: 5px;
+        border-radius: 4px;
+        font-weight: 800;
+        font-size: 0.7rem;
+        letter-spacing: 0.3px;
+        color: var(--gold-soft, #e8c76b);
+        background: rgba(212, 175, 55, 0.13);
+        border: 1px solid rgba(212, 175, 55, 0.35);
+      }
       .badge-lith {
         padding: 2px 6px;
         border-radius: 4px;
@@ -358,7 +371,7 @@ export class InspectorPanel {
               <tr class="${isHighlighted ? 'highlighted' : ''} ${int.type === 'unsampled' ? 'row-unsampled' : ''}" data-interval-id="${int.interval_id || ''}">
                 <td style="font-weight:600">${int.from_depth.toFixed(2)}</td>
                 <td>${int.to_depth.toFixed(2)}</td>
-                <td style="text-transform:capitalize;color:#94a3b8">${int.type === 'unsampled' ? 'No Sample' : int.type}</td>
+                <td>${this.renderIntervalType(int)}</td>
                 <td>${this.renderIntervalValue(int)}</td>
               </tr>
             `;
@@ -366,6 +379,26 @@ export class InspectorPanel {
         </tbody>
       </table>
     `;
+  }
+
+  // Type cell for one downhole-log row.
+  //
+  // This column used to show only the record kind ("assay", "lithology"),
+  // which reads as the *hole* type to anyone scanning the log -- and a column
+  // headed "Type" saying "assay" tells a geologist nothing they can't already
+  // see from the Value column next to it. It now leads with the drilling
+  // method from the collar record (DD, RC, TR, CH, FC) and keeps the record
+  // kind as secondary text, so the row answers "what kind of hole, logged
+  // how".
+  renderIntervalType(int) {
+    const method = (this.data && this.data.hole_type) || null;
+    const kind = int.type === 'unsampled' ? 'No Sample'
+      : int.type === 'assay' ? 'Assay'
+      : 'Lithology';
+    const methodTag = method
+      ? `<span class="badge-holetype">${method}</span>`
+      : '';
+    return `${methodTag}<span style="color:#94a3b8;font-size:0.7rem;">${kind}</span>`;
   }
 
   // Value cell for one downhole-log row. Unsampled rows are their own case:

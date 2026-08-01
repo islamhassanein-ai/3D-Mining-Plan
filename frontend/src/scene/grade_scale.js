@@ -7,19 +7,22 @@
 // different geological statements.
 // Shades are tuned for separation on the dark 3D viewport (#0d1524). What
 // matters is perceptual distance between ADJACENT buckets -- those sit next to
-// each other on a drill trace and must be told apart at a glance. Worst
-// adjacent pair is dE(CIE76) ~56; the previous orange/red boundary was ~35,
-// which read as one colour under scene shading.
+// each other on a drill trace and must be told apart at a glance. The hue walk
+// is grey -> blue -> green -> yellow -> red -> violet-magenta, which puts a
+// large hue AND lightness step at every boundary. The weakest pair used to be
+// amber/orange-red (dE ~35, reading as one colour under scene shading); the
+// 0.50-1.00 bucket is now a pure yellow and 1.00-3.00 a pure red, which widens
+// that boundary to the point where it survives the tube's specular highlight.
 //
 // `from`/`to` are the explicit bracket bounds, so the UI can label ranges
 // rather than bare numbers. `to: null` is the open-ended top bucket.
 export const GRADE_BUCKETS = [
-  { from: 0.00, to: 0.10, upper: 0.10, color: '#9aa7b8', label: '< 0.10', tag: null },
-  { from: 0.10, to: 0.30, upper: 0.30, color: '#2b7fff', label: '0.10 - 0.30', tag: null },
-  { from: 0.30, to: 0.50, upper: 0.50, color: '#21d07a', label: '0.30 - 0.50', tag: null },
-  { from: 0.50, to: 1.00, upper: 1.00, color: '#ffc233', label: '0.50 - 1.00', tag: null },
-  { from: 1.00, to: 3.00, upper: 3.00, color: '#ff5a1f', label: '1.00 - 3.00', tag: null },
-  { from: 3.00, to: null, upper: null, color: '#ff2bd6', label: '>= 3.00', tag: 'High' },
+  { from: 0.00, to: 0.10, upper: 0.10, color: '#94a3b8', label: '< 0.10', tag: null },
+  { from: 0.10, to: 0.30, upper: 0.30, color: '#1f6fff', label: '0.10 - 0.30', tag: null },
+  { from: 0.30, to: 0.50, upper: 0.50, color: '#00e57a', label: '0.30 - 0.50', tag: null },
+  { from: 0.50, to: 1.00, upper: 1.00, color: '#ffd21e', label: '0.50 - 1.00', tag: null },
+  { from: 1.00, to: 3.00, upper: 3.00, color: '#f5222d', label: '1.00 - 3.00', tag: null },
+  { from: 3.00, to: null, upper: null, color: '#e838ff', label: '>= 3.00', tag: 'High' },
 ];
 
 // "0.10 – 0.30" / "≥ 3.00" -- the From–To form used under the grade bars.
@@ -46,6 +49,19 @@ export const UNSAMPLED_SAMPLE_IDS = new Set([
 // keeps the hole reading as one continuous pipe (Leapfrog convention);
 // grade is communicated by color alone.
 export const DRILL_TUBE_RADIUS = 0.4;
+
+// Optional grade-proportional radii, opt-in via the "Scale thickness by grade"
+// switch. Off by default: a constant diameter is the Leapfrog convention and
+// keeps the hole reading as one continuous pipe. When on, the diameter step at
+// each interval boundary is the second channel (with colour) carrying grade,
+// which is what makes a high-grade run pop out at survey-scale zoom.
+// Indexed by bucket, so index -1 (unsampled) must be handled by the caller.
+export const DRILL_TUBE_RADIUS_BY_BUCKET = [0.30, 0.36, 0.44, 0.55, 0.72, 0.95];
+
+// Unsampled intervals are not drawn by the tube builder at all, but the
+// section view and any other consumer that needs a width for them should use
+// the thinnest value so a gap never reads as a result.
+export const DRILL_TUBE_RADIUS_UNSAMPLED = 0.22;
 
 // Radial segment count for interval tubes. 20 keeps the silhouette round at
 // inspection zoom -- the facet edges were still catching the light at 16 --

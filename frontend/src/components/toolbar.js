@@ -58,6 +58,17 @@ export class SceneToolbar {
         background: #d4af37;
         color: #0b1220;
       }
+      /* Reset is the one recovery action in the bar -- it carries the gold
+         outline so it stays findable when a user has lost the model. */
+      .toolbar-btn-accent {
+        color: var(--gold-soft, #e8c76b);
+        border: 1px solid rgba(212, 175, 55, 0.55);
+      }
+      .toolbar-btn-accent:hover {
+        background: rgba(212, 175, 55, 0.16);
+        color: var(--gold, #d4af37);
+        border-color: var(--gold, #d4af37);
+      }
       .toolbar-divider {
         width: 1px;
         background: rgba(255, 255, 255, 0.1);
@@ -106,7 +117,13 @@ export class SceneToolbar {
         </button>
         
         <div class="toolbar-divider"></div>
-        
+
+        <button class="toolbar-btn toolbar-btn-accent" id="reset-camera-3d-btn" data-tooltip="Reset Camera [R]">
+          <svg style="width:20px;height:20px" viewBox="0 0 24 24"><path fill="currentColor" d="M12,5V1L7,6L12,11V7A6,6 0 0,1 18,13A6,6 0 0,1 12,19A6,6 0 0,1 6,13H4A8,8 0 0,0 12,21A8,8 0 0,0 20,13A8,8 0 0,0 12,5Z"/></svg>
+        </button>
+
+        <div class="toolbar-divider"></div>
+
         <button class="toolbar-btn ${this.showGrid ? 'active' : ''}" id="toggle-grid-btn" data-tooltip="Toggle Grid">
           <svg style="width:20px;height:20px" viewBox="0 0 24 24"><path fill="currentColor" d="M10,4V8H14V4H10M16,4V8H20V4H16M16,10V14H20V10H16M16,16V20H20V16H16M10,10V14H14V10H10M10,16V20H14V16H10M4,4V8H8V4H4M4,10V14H8V10H4M4,16V20H8V16H4Z"/></svg>
         </button>
@@ -119,7 +136,18 @@ export class SceneToolbar {
     this.bindEvents();
   }
 
+  // Returns to the framing captured when the project loaded; falls back to a
+  // fresh fit of whatever is currently visible if there's no stored pose.
+  resetCamera() {
+    if (!this.viewport.controls.resetToHome()) {
+      this.viewport.sceneLoader.fitCameraToData();
+    }
+  }
+
   bindEvents() {
+    const resetBtn = this.container.querySelector('#reset-camera-3d-btn');
+    resetBtn.addEventListener('click', () => this.resetCamera());
+
     const presetBtns = this.container.querySelectorAll('[data-preset]');
     presetBtns.forEach(btn => {
       btn.addEventListener('click', () => {

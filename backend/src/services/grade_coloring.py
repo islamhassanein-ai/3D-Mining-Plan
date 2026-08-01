@@ -17,17 +17,20 @@ from typing import Optional
 # Shades are tuned for separation on the dark 3D viewport (#0d1524). The
 # constraint that matters is perceptual distance between ADJACENT buckets --
 # those are the ones that sit next to each other on a drill trace and have to
-# be told apart at a glance. Worst adjacent pair is dE(CIE76) ~56; the previous
-# orange/red boundary was ~35, which read as one colour under scene shading.
-# Categories and hue order (grey -> blue -> green -> amber -> red -> magenta)
-# are unchanged.
+# be told apart at a glance. The hue walk is
+# grey -> blue -> green -> yellow -> red -> violet-magenta, which puts a large
+# hue AND lightness step at every boundary. The weakest pair used to be
+# amber/orange-red (dE(CIE76) ~35), which read as one colour under scene
+# shading; the 0.50-1.00 bucket is now a pure yellow and 1.00-3.00 a pure red,
+# widening that boundary enough to survive the tube's specular highlight.
+# Bracket bounds are unchanged.
 GRADE_BUCKETS = [
-    (0.10, "#9aa7b8", "< 0.10"),        # Light neutral grey -- below background
-    (0.30, "#2b7fff", "0.10 - 0.30"),   # Vivid blue
-    (0.50, "#21d07a", "0.30 - 0.50"),   # Spring green
-    (1.00, "#ffc233", "0.50 - 1.00"),   # Amber
-    (3.00, "#ff5a1f", "1.00 - 3.00"),   # Orange-red
-    (None, "#ff2bd6", ">= 3.00"),       # Magenta -- high grade
+    (0.10, "#94a3b8", "< 0.10"),        # Slate grey -- below background
+    (0.30, "#1f6fff", "0.10 - 0.30"),   # Vivid blue
+    (0.50, "#00e57a", "0.30 - 0.50"),   # Spring green
+    (1.00, "#ffd21e", "0.50 - 1.00"),   # Pure yellow
+    (3.00, "#f5222d", "1.00 - 3.00"),   # Pure red
+    (None, "#e838ff", ">= 3.00"),       # Violet-magenta -- high grade
 ]
 
 # Rendered for intervals with no assay result. Near-black rather than pure

@@ -30,6 +30,7 @@ import { ExportPanel } from '../components/export_panel.js';
 import { StructuralPanel } from '../components/structural_panel.js';
 import { QaqcPanel } from '../components/qaqc_panel.js';
 import { LayerTogglePanel } from '../components/layer_toggles.js';
+import { SceneLegend } from '../components/scene_legend.js';
 import { ApiClient } from '../services/api_client.js';
 import { computeProjectSummary } from '../services/project_summary.js';
 import { ApiDataSource, ShareTokenDataSource } from '../services/data_source.js';
@@ -81,11 +82,16 @@ export function init3DViewport(container, options = {}) {
   scene.add(dirLight2);
 
   // 5. Grid and Axis helpers (Y-up grid on X-Z plane)
-  const gridHelper = new THREE.GridHelper(5000, 100, 0x374151, 0x1f2937);
+  let gridHelper = new THREE.GridHelper(5000, 100, 0x374151, 0x1f2937);
   gridHelper.position.y = 0; // standard ground
+  gridHelper.userData.excludeFromFit = true;
   scene.add(gridHelper);
 
   const axesHelper = new THREE.AxesHelper(100);
+  // The grid and axes are a reference frame, not data -- they must never
+  // influence the camera fit, or every project would be framed to the 5 km
+  // grid instead of to the drilling.
+  axesHelper.userData.excludeFromFit = true;
   scene.add(axesHelper);
 
   // 6. Setup Custom Damped Controls
@@ -126,8 +132,13 @@ export function init3DViewport(container, options = {}) {
 
   // 10. Keybind Shortcuts for Presets
   const handleKeydown = (e) => {
+    // Never steal a keystroke that's going into a form field.
+    const tag = (e.target && e.target.tagName) || '';
+    if (/^(INPUT|TEXTAREA|SELECT)$/.test(tag) || (e.target && e.target.isContentEditable)) return;
     const key = e.key.toLowerCase();
-    if (key === 'p') {
+    if (key === 'r') {
+      if (!controls.resetToHome()) sceneLoader.fitCameraToData();
+    } else if (key === 'p') {
       controls.setPreset('plan');
     } else if (key === 'n') {
       controls.setPreset('section_ns');
@@ -163,8 +174,36 @@ export function init3DViewport(container, options = {}) {
   }
   animate();
 
+  // Scene-side half of the light/dark switch. The DOM half is pure CSS
+  // variables, but the WebGL viewport has no cascade -- background, fill
+  // light and grid have to be set explicitly. Grade colours are deliberately
+  // untouched: they encode data and must not shift with the theme.
+  function setTheme(theme) {
+    const light = theme === 'light';
+    scene.background = new THREE.Color(light ? 0xe6ecf4 : 0x0b0f19);
+    // On a pale background the cool fill light muddies the surface, and the
+    // ambient has to come down or everything flattens out.
+    ambientLight.intensity = light ? 0.85 : 0.6;
+    dirLight2.intensity = light ? 0.12 : 0.3;
+
+    const wasVisible = gridHelper.visible;
+    scene.remove(gridHelper);
+    gridHelper.geometry.dispose();
+    gridHelper.material.dispose();
+    gridHelper = new THREE.GridHelper(
+      5000, 100,
+      light ? 0x94a3b8 : 0x374151,
+      light ? 0xcbd5e1 : 0x1f2937
+    );
+    gridHelper.position.y = 0;
+    gridHelper.visible = wasVisible;
+    gridHelper.userData.excludeFromFit = true;
+    scene.add(gridHelper);
+  }
+
   // Return API object to control scene state externally
   const viewport = {
+    setTheme,
     scene,
     camera,
     renderer,
@@ -237,6 +276,7 @@ window.HistoryPanel = HistoryPanel;
 window.StructuralPanel = StructuralPanel;
 window.QaqcPanel = QaqcPanel;
 window.LayerTogglePanel = LayerTogglePanel;
+window.SceneLegend = SceneLegend;
 window.ApiClient = ApiClient;
 window.ExportPanel = ExportPanel;
 window.computeProjectSummary = computeProjectSummary;

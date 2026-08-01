@@ -169,18 +169,18 @@ def test_zero_grade_is_a_real_result_not_unsampled():
 
 
 @pytest.mark.parametrize("grade,expected", [
-    (0.0,   "#9aa7b8"),  # < 0.10  light grey
-    (0.09,  "#9aa7b8"),
-    (0.10,  "#2b7fff"),  # 0.10 - 0.30  blue
-    (0.29,  "#2b7fff"),
-    (0.30,  "#21d07a"),  # 0.30 - 0.50  spring green
-    (0.49,  "#21d07a"),
-    (0.50,  "#ffc233"),  # 0.50 - 1.00  amber
-    (0.99,  "#ffc233"),
-    (1.00,  "#ff5a1f"),  # 1.00 - 3.00  orange-red
-    (2.99,  "#ff5a1f"),
-    (3.00,  "#ff2bd6"),  # >= 3.00  magenta
-    (150.0, "#ff2bd6"),
+    (0.0,   "#94a3b8"),  # < 0.10  light grey
+    (0.09,  "#94a3b8"),
+    (0.10,  "#1f6fff"),  # 0.10 - 0.30  blue
+    (0.29,  "#1f6fff"),
+    (0.30,  "#00e57a"),  # 0.30 - 0.50  spring green
+    (0.49,  "#00e57a"),
+    (0.50,  "#ffd21e"),  # 0.50 - 1.00  pure yellow
+    (0.99,  "#ffd21e"),
+    (1.00,  "#f5222d"),  # 1.00 - 3.00  pure red
+    (2.99,  "#f5222d"),
+    (3.00,  "#e838ff"),  # >= 3.00  violet-magenta
+    (150.0, "#e838ff"),
 ])
 def test_grade_scale_bracket_boundaries(grade, expected):
     assert get_grade_color(grade, "g/t") == expected

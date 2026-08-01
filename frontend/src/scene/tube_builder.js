@@ -86,6 +86,12 @@ function ringDepths(trace, from, to) {
  * `intervals` must already be filtered to sampled intervals and sorted by
  * from_depth. Returns null when there is nothing to draw.
  *
+ * `radius` is either a number (constant diameter, the default Leapfrog look)
+ * or a function `(interval) => number` for the opt-in grade-scaled mode. In
+ * that mode a boundary between two differently-sized intervals leaves a
+ * visible step in the silhouette -- that step is the point of the mode, and
+ * the duplicated boundary rings mean the surface still never breaks open.
+ *
  * The returned geometry carries:
  *   position, normal, color  -- standard shaded surface
  *   aGrade                   -- per-vertex grade, for the GPU cutoff discard
@@ -94,6 +100,8 @@ function ringDepths(trace, from, to) {
  */
 export function buildHoleTube(trace, intervals, radius, radialSegments) {
   if (!trace || trace.length < 2 || !intervals.length) return null;
+
+  const radiusFor = typeof radius === 'function' ? radius : () => radius;
 
   const positions = [];
   const normals = [];
@@ -128,14 +136,15 @@ export function buildHoleTube(trace, intervals, radius, radialSegments) {
       centre.copy(points[i]);
       binormal.crossVectors(tangents[i], frameNormals[i]).normalize();
       colour.set(runDepths[i].interval.color);
+      const ringRadius = radiusFor(runDepths[i].interval);
 
       for (let j = 0; j < radialSegments; j++) {
         const theta = (j / radialSegments) * Math.PI * 2;
         offset.copy(frameNormals[i]).multiplyScalar(Math.cos(theta))
           .addScaledVector(binormal, Math.sin(theta));
-        positions.push(centre.x + offset.x * radius,
-                       centre.y + offset.y * radius,
-                       centre.z + offset.z * radius);
+        positions.push(centre.x + offset.x * ringRadius,
+                       centre.y + offset.y * ringRadius,
+                       centre.z + offset.z * ringRadius);
         // Tube normal points straight out from the centreline: smooth by
         // construction, no normal averaging needed.
         normals.push(offset.x, offset.y, offset.z);
@@ -146,8 +155,11 @@ export function buildHoleTube(trace, intervals, radius, radialSegments) {
     }
 
     // Stitch consecutive rings. Rings that belong to different intervals but
-    // sit at the same depth produce zero-area quads, which cost nothing and
-    // keep the colour break exactly at the boundary.
+    // sit at the same depth produce zero-area quads at a constant radius,
+    // which cost nothing and keep the colour break exactly at the boundary.
+    // In grade-scaled mode those same quads widen into the annular shoulder
+    // between a thin interval and a thick one, so the step is closed surface
+    // rather than a hole -- no extra geometry needed for either case.
     for (let i = 0; i < points.length - 1; i++) {
       const a = ringStart[i];
       const b = ringStart[i + 1];

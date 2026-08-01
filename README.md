@@ -52,6 +52,49 @@ below-detection-limit value — see `sample_data/README_AR.md`. Use them via
 or look at the seeded `Monark Gold Prospect` project for data that's already
 loaded and visible immediately after `./run.ps1`.
 
+## Adding planned (proposed) boreholes
+
+A planned hole is one that has been designed but not yet drilled. There is no
+separate import for them — they go through the same collar/combined CSV as
+drilled holes, with a **`Status`** column.
+
+| `Status` value | Result |
+| --- | --- |
+| `planned`, `proposed`, `design`, `target` | Rendered as a planned hole |
+| `drilled`, `complete`, `completed`, or blank/absent | Rendered as a drilled hole |
+
+Minimal collar CSV — the only difference from a drilled hole is the last column:
+
+```csv
+hole_id,easting,northing,elevation,hole_type,status
+DDH-001,515000,4515000,1050,DD,drilled
+PL-001,515080,4515040,1048,DD,planned
+```
+
+In the combined CSV the same column sits alongside the assay rows, and a
+planned hole may carry **target** intervals — the grades you expect to
+intersect — which render as translucent sleeves over the trajectory:
+
+```csv
+Hole Id,Zone,X,Y,Z,Dip,Azimuth,Total_Length,Type,Status,Sample_ID,From,To,Grade
+AAPL001,Abo Elmajd,208270.00,2467915.00,300.00,-65,110,90.0,DD,planned,AAPL001-T01,30,45,1.20
+AAPL001,,,,,,,,,,AAPL001-T02,60,72,2.80
+```
+
+`sample_data/09_planned_and_unsampled.csv` and
+`sample_data/10_collar_with_planned.csv` are working examples — import either
+via **Import Drillholes (CSV)**.
+
+**How they look.** A planned hole is drawn as a bright red collar sphere with a
+black dashed trace beneath it, so it can never be mistaken for a drilled hole
+at a glance. Give a hole a dip and azimuth (and `Total_Length`) and its
+trajectory is desurveyed exactly like a real one, which is the point — you are
+looking at where the hole would actually go, not a vertical stick.
+
+Planned holes are their own layer: the **Planned Holes** row in the floating
+legend (or **Planned Boreholes** in the sidebar's Layers panel) hides both the
+dashed traces and the target intervals together.
+
 ## Development (active frontend work)
 
 `run.ps1` does a one-time frontend *build*. If you're editing frontend code

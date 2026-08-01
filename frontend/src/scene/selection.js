@@ -28,10 +28,15 @@ export class SceneSelection {
     const intersects = this.raycaster.intersectObjects(this.viewport.scene.children, true);
 
     if (intersects.length > 0) {
-      // Find the first valid drillhole trace or instanced mesh hit
+      // Two passes over the hits, for the same reason as hover.js: the trace
+      // line is picked with a 10 m threshold so a 1px line stays clickable,
+      // which routinely makes it report a nearer hit than the tube drawn over
+      // it. Taking hits in plain distance order would therefore open the
+      // whole-hole view when the user clicked squarely on one sample.
+      // Interval hits win; the bare trace is the fallback.
       for (const hit of intersects) {
         const obj = hit.object;
-        
+
         // 1a. Continuous assay tube: one mesh per hole, so the interval is
         //     resolved from the hit triangle's first vertex.
         if (obj.userData && obj.userData.intervalRefs && hit.face) {
@@ -71,12 +76,16 @@ export class SceneSelection {
             return; // Selected!
           }
         }
+      }
 
-        // 2. Check if it's a Line (Drillhole Trace)
-        if (obj.isLine && obj.userData && obj.userData.type === 'drillhole_trace') {
+      // 2. Fallback: the bare trace line, or a planned hole's collar marker.
+      //    Both carry type 'drillhole_trace'.
+      for (const hit of intersects) {
+        const ud = hit.object.userData;
+        if (ud && ud.type === 'drillhole_trace' && ud.collar_id) {
           this.onSelect('trace', {
-            collarId: obj.userData.collar_id,
-            holeId: obj.userData.hole_id,
+            collarId: ud.collar_id,
+            holeId: ud.hole_id,
             point: hit.point
           });
           return; // Selected!

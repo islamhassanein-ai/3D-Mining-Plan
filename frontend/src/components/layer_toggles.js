@@ -1,9 +1,16 @@
 // Layer visibility toggle list, styled after the reference viewer's
 // "Layers" panel (checkbox + swatch per render group).
 export class LayerTogglePanel {
-  constructor(container, viewport) {
+  /**
+   * @param options.onChange  called with (key, visible) after a user toggle,
+   *        so the floating scene legend can stay in step. Not fired by
+   *        setVisible(), which is how the legend pushes state back here --
+   *        that would loop.
+   */
+  constructor(container, viewport, options = {}) {
     this.container = typeof container === 'string' ? document.getElementById(container) : container;
     this.viewport = viewport;
+    this.onChange = options.onChange || null;
 
     this.layers = [
       { key: 'traces', label: 'Drillhole Traces', color: '#9ca3af', get: () => viewport.tracesRenderer && viewport.tracesRenderer.group },
@@ -89,6 +96,7 @@ export class LayerTogglePanel {
         const key = e.target.dataset.layer;
         this.state[key] = e.target.checked;
         this.applyOne(key);
+        if (this.onChange) this.onChange(key, this.state[key]);
       });
     });
   }
@@ -103,6 +111,17 @@ export class LayerTogglePanel {
     for (const obj of objects) {
       if (obj) obj.visible = this.state[key];
     }
+  }
+
+  // Programmatic set, used by the floating scene legend. Updates the checkbox
+  // and the scene but does NOT fire onChange, so the two controls can mirror
+  // each other without echoing back and forth.
+  setVisible(key, visible) {
+    if (!(key in this.state) || this.state[key] === visible) return;
+    this.state[key] = visible;
+    const input = this.container.querySelector(`input[data-layer="${key}"]`);
+    if (input) input.checked = visible;
+    this.applyOne(key);
   }
 
   // Re-applies all stored toggle states -- call after reloading project

@@ -116,12 +116,12 @@ test('a zero-length interval degenerates safely to one segment', () => {
 
 test('grade brackets match the canonical scale', () => {
   const cases = [
-    [0.0, '#9aa7b8'], [0.09, '#9aa7b8'],
-    [0.10, '#2b7fff'], [0.29, '#2b7fff'],
-    [0.30, '#21d07a'], [0.49, '#21d07a'],
-    [0.50, '#ffc233'], [0.99, '#ffc233'],
-    [1.00, '#ff5a1f'], [2.99, '#ff5a1f'],
-    [3.00, '#ff2bd6'], [150, '#ff2bd6'],
+    [0.0, '#94a3b8'], [0.09, '#94a3b8'],
+    [0.10, '#1f6fff'], [0.29, '#1f6fff'],
+    [0.30, '#00e57a'], [0.49, '#00e57a'],
+    [0.50, '#ffd21e'], [0.99, '#ffd21e'],
+    [1.00, '#f5222d'], [2.99, '#f5222d'],
+    [3.00, '#e838ff'], [150, '#e838ff'],
   ];
   for (const [grade, expected] of cases) {
     assert.equal(getGradeColor(grade, 'g/t'), expected, `grade ${grade}`);

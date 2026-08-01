@@ -702,3 +702,134 @@
       border: 1px solid rgba(59, 130, 246, 0.3);
       color: #93c5fd;
     }
+
+    /* =====================================================================
+       LIGHT THEME
+       =====================================================================
+       Toggled by setting data-theme="light" on <html>. The dark theme is the
+       default and remains the working view for a darkened core-shed or
+       projector; light mode is the "field map" view -- warm paper panels and
+       a pale sky viewport, meant for daylight and for printing/screenshots
+       into reports, where a near-black background bleeds ink and washes out.
+
+       The grade palette is NOT re-themed. Those six colours encode data, and
+       they were chosen for separation from each other, not from the
+       background; changing them per theme would make two screenshots of the
+       same hole disagree. They were re-checked against the light viewport
+       (#e6ecf4) -- the lightest bucket, #94a3b8 grey, is the only one that
+       loses contrast, and the surface behind it is lighter still, so it
+       stays legible. */
+    html[data-theme="light"] {
+      --bg-darker: #eef1f6;
+      --bg-dark: #ffffff;
+      --bg-panel2: #f6f8fb;
+      --bg-card: rgba(255, 255, 255, 0.92);
+      --border-light: #cdd6e3;
+      --text-main: #16202f;
+      --text-muted: #4d5c72;
+      --text-faint: #7c8ba1;
+      /* Darkened from #d4af37: the bright gold is unreadable as text on
+         white, but stays the same hue so the brand doesn't shift. */
+      --gold: #96741a;
+      --gold-soft: #7d5f13;
+      --accent-blue: #1d4ed8;
+      --accent-green: #047857;
+      --accent-pink: #be185d;
+    }
+
+    html[data-theme="light"] #app-header {
+      background: linear-gradient(180deg, #ffffff 0%, #f2f5fa 100%);
+      box-shadow: 0 2px 8px rgba(22, 32, 47, 0.09);
+    }
+    /* The brand mark keeps the bright gold -- it's a logo tile, not text. */
+    html[data-theme="light"] #app-header .mark {
+      background: linear-gradient(135deg, #d4af37 0%, #a8830f 100%);
+      box-shadow: 0 0 0 1px rgba(150, 116, 26, 0.35), 0 3px 8px rgba(22, 32, 47, 0.18);
+    }
+    html[data-theme="light"] .panel-edge-tab {
+      background: rgba(255, 255, 255, 0.95);
+      box-shadow: 0 2px 6px rgba(22, 32, 47, 0.12);
+    }
+    html[data-theme="light"] .scene-toolbar,
+    html[data-theme="light"] .scene-legend,
+    html[data-theme="light"] #viewport-hint-card {
+      background: rgba(255, 255, 255, 0.9);
+      border-color: var(--border-light);
+      box-shadow: 0 6px 18px rgba(22, 32, 47, 0.14);
+    }
+    html[data-theme="light"] .toolbar-btn { color: #4d5c72; }
+    html[data-theme="light"] .toolbar-btn:hover {
+      background: rgba(22, 32, 47, 0.07);
+      color: #16202f;
+    }
+    html[data-theme="light"] .toolbar-btn::after {
+      background: rgba(255, 255, 255, 0.97);
+      color: #16202f;
+      border-color: var(--border-light);
+    }
+    html[data-theme="light"] .hover-tooltip {
+      background: rgba(255, 255, 255, 0.97) !important;
+      color: #16202f !important;
+      border-color: rgba(150, 116, 26, 0.55) !important;
+      box-shadow: 0 8px 22px rgba(22, 32, 47, 0.2) !important;
+    }
+    /* Toggle-switch tracks read as "off" grey / "on" gold in both themes. */
+    html[data-theme="light"] .layer-slider,
+    html[data-theme="light"] .slider { background: #c3cdda; }
+    html[data-theme="light"] .layer-switch input:checked + .layer-slider {
+      background: #e0cd8e;
+    }
+    html[data-theme="light"] .layer-slider::before { background: #ffffff; }
+    html[data-theme="light"] .layer-switch input:checked + .layer-slider::before {
+      background: #96741a;
+    }
+    html[data-theme="light"] .cutoff-number-input {
+      background: #ffffff;
+      border-color: var(--border-light);
+      color: #16202f;
+    }
+    html[data-theme="light"] .cutoff-container { color: #16202f; }
+    html[data-theme="light"] .cutoff-title { color: #4d5c72; }
+    html[data-theme="light"] .table-container tr.highlighted td {
+      background: rgba(29, 78, 216, 0.1) !important;
+      border-left-color: #1d4ed8;
+    }
+
+    /* Theme switch in the header */
+    #theme-toggle {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border-light);
+      border-radius: 7px;
+      padding: 2px;
+      flex-shrink: 0;
+    }
+    #theme-toggle button {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 27px;
+      height: 23px;
+      border: none;
+      border-radius: 5px;
+      background: transparent;
+      color: var(--text-faint);
+      cursor: pointer;
+      transition: background 0.15s ease, color 0.15s ease;
+    }
+    #theme-toggle button:hover { color: var(--text-main); }
+    #theme-toggle button.active {
+      background: var(--gold);
+      color: var(--bg-dark);
+    }
+    #theme-toggle svg { width: 14px; height: 14px; }
+
+    /* Header right cluster: project stats plus the theme switch. */
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      min-width: 0;
+    }

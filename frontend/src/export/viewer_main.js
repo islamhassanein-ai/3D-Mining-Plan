@@ -27,6 +27,7 @@ import { CoordinateFlag } from '../scene/coordinate_flag.js';
 import { BoreholeLabels } from '../scene/borehole_labels.js';
 import { TrenchLabels } from '../scene/trench_labels.js';
 import { LayerTogglePanel } from '../components/layer_toggles.js';
+import { SceneLegend } from '../components/scene_legend.js';
 import { computeProjectSummary } from '../services/project_summary.js';
 import { StaticDataSource } from '../services/static_data_source.js';
 
@@ -187,10 +188,11 @@ async function initStaticViewer() {
     viewport.hoverRenderer = hover;
 
     // 13. Toolbar
+    let toolbar = null;
     const toolbarContainer = document.getElementById('toolbar-3d-container');
     if (toolbarContainer) {
       toolbarContainer.innerHTML = '';
-      new SceneToolbar(toolbarContainer, viewport);
+      toolbar = new SceneToolbar(toolbarContainer, viewport);
     }
 
     // 14. Load scene from static payload
@@ -208,7 +210,8 @@ async function initStaticViewer() {
       btn.onclick = () => controls.setPreset(btn.dataset.preset);
     });
     document.getElementById('reset-camera-btn')?.addEventListener('click', () => {
-      sceneLoader.fitCameraToData(data.drillholes);
+      if (toolbar) toolbar.resetCamera();
+      else if (!controls.resetToHome()) sceneLoader.fitCameraToData();
     });
 
     // 17. Go-to-coordinate
@@ -234,10 +237,43 @@ async function initStaticViewer() {
     });
 
     // 19. Layer toggles
+    // Layer toggles in the sidebar and the floating scene legend are two
+    // views of one visibility state, so each pushes its changes into the
+    // other -- same arrangement as the live app.
+    const LEGEND_TO_LAYERS = {
+      trenches:   ['trenches'],
+      drillholes: ['traces', 'assays', 'lithology'],
+      planned:    ['planned'],
+      topography: ['topography'],
+    };
     const layerContainer = document.getElementById('layer-toggles-container');
+    const legendContainer = document.getElementById('scene-legend-container');
     if (layerContainer) {
       layerContainer.innerHTML = '';
-      new LayerTogglePanel(layerContainer, viewport);
+      let legend = null;
+      const layers = new LayerTogglePanel(layerContainer, viewport, {
+        onChange: (key) => {
+          if (!legend) return;
+          for (const [legendKey, layerKeys] of Object.entries(LEGEND_TO_LAYERS)) {
+            if (!layerKeys.includes(key)) continue;
+            legend.setVisible(legendKey, layerKeys.some(k => layers.state[k]), { silent: true });
+          }
+        }
+      });
+      if (legendContainer) {
+        legendContainer.innerHTML = '';
+        legend = new SceneLegend(legendContainer, viewport, {
+          onToggle: (key, visible) => {
+            for (const layerKey of (LEGEND_TO_LAYERS[key] || [])) {
+              layers.setVisible(layerKey, visible);
+            }
+          }
+        });
+        legend.setSurfaceDerived(!!sceneLoader.surfaceDerived);
+        Object.entries(LEGEND_TO_LAYERS).forEach(([legendKey, layerKeys]) => {
+          legend.setVisible(legendKey, layerKeys.some(k => layers.state[k]), { silent: true });
+        });
+      }
     }
 
     // 20. Cutoff slider + grade histogram

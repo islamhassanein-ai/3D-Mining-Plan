@@ -247,9 +247,16 @@ test('planned traces are dashed and separately toggleable', () => {
   ]);
 
   assert.equal(r.group.children.length, 1);
-  assert.equal(r.plannedGroup.children.length, 1);
-  assert.equal(r.plannedGroup.children[0].material.isLineDashedMaterial, true);
   assert.equal(r.group.children[0].material.isLineDashedMaterial, undefined);
+
+  // A planned hole contributes three objects: the halo line, the black dashed
+  // trace, and the red collar sphere that marks it as a proposal.
+  assert.equal(r.plannedGroup.children.length, 3);
+  const dashed = r.plannedGroup.children.filter(c => c.material.isLineDashedMaterial);
+  assert.equal(dashed.length, 2, 'trace and its halo are both dashed');
+  const spheres = r.plannedGroup.children.filter(c => c.isMesh);
+  assert.equal(spheres.length, 1, 'exactly one collar marker');
+  assert.equal(spheres[0].material.color.getHexString(), 'ff2b2b');
 });
 
 test('a hole with no status defaults to drilled styling', () => {

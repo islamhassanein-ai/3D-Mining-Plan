@@ -45,6 +45,29 @@ export class DampedCameraControls {
     // Screen dimensions
     this.width = this.domElement.clientWidth;
     this.height = this.domElement.clientHeight;
+
+    // "Home" pose, captured by SceneLoader once it has framed the data.
+    // Reset Camera returns here instead of to a fixed angle, so it always
+    // lands on a view where the loaded project actually fills the viewport.
+    this.home = null;
+  }
+
+  storeHome() {
+    this.home = {
+      target: this.target.clone(),
+      position: this.camera.position.clone(),
+    };
+  }
+
+  // Returns false when no home pose has been captured yet (no data loaded),
+  // letting the caller fall back to a plain re-fit.
+  resetToHome() {
+    if (!this.home) return false;
+    this.target.copy(this.home.target);
+    this.camera.position.copy(this.home.position);
+    this.updateSphericalFromCamera();
+    this.update();
+    return true;
   }
 
   updateSphericalFromCamera() {
