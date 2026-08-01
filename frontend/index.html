@@ -179,6 +179,7 @@
           <button id="open-import-btn" class="btn-sidebar">Import Drillholes (CSV)</button>
           <button id="open-supp-btn" class="btn-sidebar">Upload Topo / Trenches / Veins</button>
           <button id="open-struct-btn" class="btn-sidebar">Structural Readings</button>
+          <button id="open-planner-btn" class="btn-sidebar">Drillhole Depth Planner</button>
           <button id="open-qaqc-btn" class="btn-sidebar">QA/QC Reference Standards</button>
           <button id="open-share-btn" class="btn-sidebar">Share Project</button>
           <button id="open-history-btn" class="btn-sidebar">View Import History</button>
@@ -219,6 +220,11 @@
 
       <!-- Click-to-toggle legend, bottom-left over the canvas -->
       <div id="scene-legend-container"></div>
+
+      <!-- Drillhole Depth Planner. Floats over the canvas rather than living
+           in a modal overlay, so the view stays orbit-able while depths are
+           tuned. Hidden until the sidebar button opens it. -->
+      <div id="depth-planner-container"></div>
     </main>
 
     <!-- Right Sidebar (Inspector) -->
@@ -283,6 +289,7 @@
     let rulerTool = null;
     let sectionPanel = null;
     let projectSwitcher = null;
+    let depthPlanner = null;
     
     window.addEventListener('DOMContentLoaded', async () => {
       // Check for share token in URL first
@@ -629,6 +636,17 @@
         document.getElementById('open-import-btn').onclick = () => showImportModal();
         document.getElementById('open-supp-btn').onclick = () => showSupplementaryModal();
         document.getElementById('open-struct-btn').onclick = () => showStructuralModal();
+
+        // The planner is built once per project load, because it reads the
+        // scene payload directly (trench samples, structural readings, collars)
+        // rather than calling the API. Re-opening it must not rebuild it, or
+        // the geologist loses whatever scenario they were part-way through.
+        depthPlanner = new window.DepthPlannerPanel('depth-planner-container', viewport3D, data);
+        makeDraggable(document.querySelector('#depth-planner-container .modal-card'));
+        document.getElementById('open-planner-btn').onclick = () => {
+          if (depthPlanner.isOpen()) depthPlanner.close();
+          else depthPlanner.open();
+        };
         document.getElementById('open-qaqc-btn').onclick = () => showQaqcModal();
         document.getElementById('open-share-btn').onclick = () => showShareModal();
         document.getElementById('open-history-btn').onclick = () => showHistoryModal();
@@ -858,6 +876,12 @@
       document.getElementById('section-view-container').innerHTML = '';
       document.getElementById('inspector-container').innerHTML = '';
       document.getElementById('toolbar-3d-container').innerHTML = '';
+      // The planner holds the previous project's trench and structural data;
+      // it must not survive into the next one.
+      const plannerHost = document.getElementById('depth-planner-container');
+      plannerHost.classList.remove('open');
+      plannerHost.innerHTML = '';
+      depthPlanner = null;
     }
 
     function showLoginModal() {

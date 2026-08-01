@@ -17,6 +17,7 @@ import { TopographyRenderer } from './topography.js';
 import { TrenchesRenderer } from './trenches.js';
 import { WireframesRenderer } from './wireframes.js';
 import { StructuralReadingsRenderer } from './structural_readings.js';
+import { DepthPlanRenderer } from './depth_plan_renderer.js';
 import { LodManager } from './lod_manager.js';
 import { OrientationGizmo } from './orientation_gizmo.js';
 import { CoordinateFlag } from './coordinate_flag.js';
@@ -28,6 +29,7 @@ import { SharePanel } from '../components/share_panel.js';
 import { HistoryPanel } from '../components/history_panel.js';
 import { ExportPanel } from '../components/export_panel.js';
 import { StructuralPanel } from '../components/structural_panel.js';
+import { DepthPlannerPanel } from '../components/depth_planner_panel.js';
 import { QaqcPanel } from '../components/qaqc_panel.js';
 import { LayerTogglePanel } from '../components/layer_toggles.js';
 import { SceneLegend } from '../components/scene_legend.js';
@@ -106,6 +108,9 @@ export function init3DViewport(container, options = {}) {
   const trenchesRenderer = new TrenchesRenderer(scene);
   const wireframesRenderer = new WireframesRenderer(scene);
   const structuralReadingsRenderer = new StructuralReadingsRenderer(scene);
+  // Driven by the Depth Planner panel rather than by scene_loader: it draws a
+  // proposal the user is authoring, not project data that was loaded.
+  const depthPlanRenderer = new DepthPlanRenderer(scene);
   const coordinateFlag = new CoordinateFlag(scene);
   const boreholeLabelsRenderer = new BoreholeLabels(scene);
   const trenchLabelsRenderer = new TrenchLabels(scene);
@@ -162,6 +167,7 @@ export function init3DViewport(container, options = {}) {
     lodManager.update();
     boreholeLabelsRenderer.update(camera);
     trenchLabelsRenderer.update(camera);
+    depthPlanRenderer.update(camera);
     if (hover) hover.update();
 
     // Main render pass
@@ -215,6 +221,7 @@ export function init3DViewport(container, options = {}) {
     trenchesRenderer,
     wireframesRenderer,
     structuralReadingsRenderer,
+    depthPlanRenderer,
     coordinateFlag,
     boreholeLabelsRenderer,
     trenchLabelsRenderer,
@@ -234,6 +241,7 @@ export function init3DViewport(container, options = {}) {
       trenchesRenderer.clear();
       wireframesRenderer.clear();
       structuralReadingsRenderer.clear();
+      depthPlanRenderer.clear();
       coordinateFlag.dispose();
       boreholeLabelsRenderer.clear();
       trenchLabelsRenderer.clear();
@@ -274,6 +282,7 @@ window.ProjectSwitcher = ProjectSwitcher;
 window.SharePanel = SharePanel;
 window.HistoryPanel = HistoryPanel;
 window.StructuralPanel = StructuralPanel;
+window.DepthPlannerPanel = DepthPlannerPanel;
 window.QaqcPanel = QaqcPanel;
 window.LayerTogglePanel = LayerTogglePanel;
 window.SceneLegend = SceneLegend;

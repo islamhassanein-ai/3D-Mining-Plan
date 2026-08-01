@@ -26,6 +26,9 @@ export class LayerTogglePanel {
       { key: 'trenches', label: 'Trenches', color: '#ef4444', get: () => viewport.trenchesRenderer && viewport.trenchesRenderer.group },
       { key: 'wireframes', label: 'Vein Wireframes', color: '#ec4899', get: () => viewport.wireframesRenderer && viewport.wireframesRenderer.group },
       { key: 'structural', label: 'Structural Readings', color: '#eab308', get: () => viewport.structuralReadingsRenderer && viewport.structuralReadingsRenderer.group },
+      // The Depth Planner's zone slab, proposed hole and depth call-outs. Empty
+      // until the planner is opened, so the toggle is harmless before then.
+      { key: 'depthPlan', label: 'Depth Plan', color: '#f97316', get: () => viewport.depthPlanRenderer && viewport.depthPlanRenderer.group },
       { key: 'labels', label: 'Borehole Labels', color: '#e8c76b', get: () => viewport.boreholeLabelsRenderer && viewport.boreholeLabelsRenderer.group, defaultOff: true },
       { key: 'trenchLabels', label: 'Trench Labels', color: '#fca5a5', get: () => viewport.trenchLabelsRenderer && viewport.trenchLabelsRenderer.group, defaultOff: true },
     ];

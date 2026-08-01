@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { planeNormal, dipDirectionFromStrike } from '../services/depth_planner.js';
 
 export class StructuralReadingsRenderer {
   constructor(scene) {
@@ -47,15 +48,16 @@ export class StructuralReadingsRenderer {
         // Position the disc at UTM (Three.js coordinates: X = Easting, Y = Elevation, Z = Northing)
         mesh.position.set(easting, elevation, northing);
 
-        // Orient the disc normal [0, 0, 1] to match the dip/strike plane normal
-        const strikeRad = (strike * Math.PI) / 180;
-        const dipRad = (dip * Math.PI) / 180;
-
-        const normal = new THREE.Vector3(
-          -Math.sin(dipRad) * Math.sin(strikeRad),
-          Math.cos(dipRad),
-          -Math.sin(dipRad) * Math.cos(strikeRad)
-        ).normalize();
+        // Orient the disc normal [0, 0, 1] to match the plane's normal.
+        //
+        // This used to substitute STRIKE where the dip direction belongs, which
+        // drew every disc dipping 90 degrees away from the measured direction.
+        // The one plane-normal definition now lives in depth_planner.js, so the
+        // discs and the Depth Planner's zone slab cannot drift apart again.
+        const dipDirection = dipDirectionFromStrike(strike);
+        const n = planeNormal(dip, dipDirection);
+        // (e, n, u) -> three.js (X = Easting, Y = Elevation, Z = Northing).
+        const normal = new THREE.Vector3(n.e, n.u, n.n).normalize();
 
         const defaultNormal = new THREE.Vector3(0, 0, 1);
         const quaternion = new THREE.Quaternion().setFromUnitVectors(defaultNormal, normal);
