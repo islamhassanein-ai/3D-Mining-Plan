@@ -151,6 +151,32 @@ export class InspectorPanel {
       }
       .table-container tbody tr { cursor: pointer; }
       .table-container tbody tr:hover td { background: rgba(255, 255, 255, 0.04); }
+      /* Row tooltip. The Sample ID is not a column -- it would crowd a narrow
+         panel, and most rows are read by depth anyway -- so hovering is how
+         you get the name of the sample you are looking at. */
+      .log-tooltip {
+        position: fixed;
+        z-index: 1000;
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 0.1s ease;
+        background: rgba(13, 21, 36, 0.97);
+        border: 1px solid rgba(212, 175, 55, 0.55);
+        border-radius: 7px;
+        padding: 7px 10px;
+        font-size: 11.5px;
+        color: #e8edf5;
+        white-space: nowrap;
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.5);
+      }
+      .log-tooltip .lt-name {
+        font-weight: 800;
+        color: var(--gold-soft, #e8c76b);
+        margin-bottom: 3px;
+      }
+      .log-tooltip .lt-name.lt-unnamed { color: var(--text-muted, #93a2ba); font-style: italic; }
+      .log-tooltip .lt-row { color: var(--text-muted, #93a2ba); }
+      .log-tooltip .lt-row b { color: #e8edf5; font-weight: 600; }
       .badge-assay {
         padding: 2px 6px;
         border-radius: 4px;
@@ -217,18 +243,64 @@ export class InspectorPanel {
         letter-spacing: 0.04em;
         text-transform: uppercase;
       }
-      .badge-status.planned {
-        color: #67e8f9;
-        background: rgba(103, 232, 249, 0.12);
-        border: 1px dashed rgba(103, 232, 249, 0.6);
-      }
+      /* The two statuses were #34d399 and #67e8f9 -- a green and a cyan, but
+         both light teals, so at badge size on a dark panel they read as the
+         same colour. They are now a true green against a near-white, which no
+         one can confuse, and the pairing matches the 3D view: a drilled hole
+         is solid, a planned one is a white marker on a dashed black trace. */
       .badge-status.drilled {
-        color: #34d399;
-        background: rgba(52, 211, 153, 0.12);
-        border: 1px solid rgba(52, 211, 153, 0.4);
+        color: #22c55e;
+        background: rgba(34, 197, 94, 0.14);
+        border: 1px solid rgba(34, 197, 94, 0.55);
+      }
+      .badge-status.planned {
+        color: #f1f5f9;
+        background: rgba(241, 245, 249, 0.1);
+        border: 1px dashed rgba(241, 245, 249, 0.7);
       }
     `;
     document.head.appendChild(style);
+  }
+
+  // One tooltip element reused by every row, created lazily and parked on
+  // <body> so it is never clipped by the panel's own overflow.
+  ensureTooltip() {
+    if (this.tooltipEl && this.tooltipEl.isConnected) return this.tooltipEl;
+    const el = document.createElement('div');
+    el.className = 'log-tooltip';
+    document.body.appendChild(el);
+    this.tooltipEl = el;
+    return el;
+  }
+
+  bindRowTooltips() {
+    const tip = this.ensureTooltip();
+    const hide = () => { tip.style.opacity = '0'; };
+
+    this.container.querySelectorAll('tr[data-tip]').forEach(row => {
+      row.addEventListener('mouseenter', () => {
+        let payload;
+        try { payload = JSON.parse(row.dataset.tip); } catch { return; }
+        tip.innerHTML =
+          `<div class="lt-name ${payload.named ? '' : 'lt-unnamed'}">${payload.name}</div>` +
+          payload.rows.map(([k, v]) =>
+            `<div class="lt-row">${k}: <b>${v}</b></div>`).join('');
+        tip.style.opacity = '1';
+      });
+      row.addEventListener('mousemove', (e) => {
+        // Flip to the other side of the cursor near the viewport edges, so the
+        // tooltip is never cut off against the window.
+        const rect = tip.getBoundingClientRect();
+        const x = e.clientX + 14;
+        const y = e.clientY + 14;
+        tip.style.left = (x + rect.width > window.innerWidth ? e.clientX - rect.width - 14 : x) + 'px';
+        tip.style.top = (y + rect.height > window.innerHeight ? e.clientY - rect.height - 14 : y) + 'px';
+      });
+      row.addEventListener('mouseleave', hide);
+    });
+
+    // A re-render replaces the rows mid-hover, which would strand the tooltip.
+    hide();
   }
 
   async loadCollar(collarId, highlightedIntervalId = null) {
@@ -363,7 +435,9 @@ export class InspectorPanel {
           ${intervals.map(int => {
             const isHighlighted = int.interval_id && int.interval_id === this.highlightedIntervalId;
             return `
-              <tr class="${isHighlighted ? 'highlighted' : ''} ${int.type === 'unsampled' ? 'row-unsampled' : ''}" data-interval-id="${int.interval_id || ''}">
+              <tr class="${isHighlighted ? 'highlighted' : ''} ${int.type === 'unsampled' ? 'row-unsampled' : ''}"
+                  data-interval-id="${int.interval_id || ''}"
+                  data-tip="${escapeAttr(this.tooltipFor(int))}">
                 <td style="font-weight:600">${int.from_depth.toFixed(2)}</td>
                 <td>${int.to_depth.toFixed(2)}</td>
                 <td>${this.renderIntervalValue(int)}</td>
@@ -373,6 +447,44 @@ export class InspectorPanel {
         </tbody>
       </table>
     `;
+  }
+
+  /**
+   * Tooltip payload for one log row, as a JSON blob on the element.
+   *
+   * The Sample ID has no column of its own -- it would crowd a narrow panel,
+   * and rows are usually read by depth -- so this is where the name of a
+   * sample is available. Rows with no Sample ID say so rather than showing an
+   * empty heading; plenty of projects carry no such column at all.
+   */
+  tooltipFor(int) {
+    const method = (this.data && this.data.hole_type) || null;
+    const holeId = (this.data && this.data.hole_id) || '';
+    const depths = `${int.from_depth.toFixed(2)} - ${int.to_depth.toFixed(2)} m`;
+
+    let name;
+    let named = true;
+    if (int.type === 'unsampled') {
+      name = int.label || 'No Sample';
+      named = false;
+    } else if (int.sample_id) {
+      name = int.sample_id;
+    } else if (int.type === 'lithology') {
+      name = int.lith_code || 'Lithology';
+    } else {
+      name = 'Unnamed sample';
+      named = false;
+    }
+
+    const rows = [['Hole', method ? `${holeId} (${method})` : holeId], ['Depth', depths]];
+    if (int.type === 'assay' && int.value != null && !int.unsampled) {
+      rows.push(['Assay', `${int.below_dl ? '< ' : ''}${int.value.toFixed(3)} ${int.unit || ''}`.trim()]);
+    }
+    if (int.type === 'lithology' && int.lith_code) rows.push(['Code', int.lith_code]);
+    if (int.qaqc_flag) rows.push(['QA/QC', String(int.qaqc_flag).replace(/_/g, ' ')]);
+    rows.push(['Length', `${(int.to_depth - int.from_depth).toFixed(2)} m`]);
+
+    return JSON.stringify({ name, named, rows });
   }
 
   // Value cell for one downhole-log row. Unsampled rows are their own case:
@@ -483,6 +595,9 @@ export class InspectorPanel {
       });
     }
 
+    // 3b. Row hover tooltip -- names the sample under the cursor.
+    this.bindRowTooltips();
+
     // 3. Row click selection inside logs table
     const rows = this.container.querySelectorAll('.table-container tbody tr');
     rows.forEach(row => {
@@ -499,4 +614,12 @@ export class InspectorPanel {
     });
 
   }
+}
+
+// Row tooltips carry their payload in a data attribute, so quotes and angle
+// brackets in a sample id must not be able to break out of it.
+function escapeAttr(value) {
+  return String(value).replace(/[&<>"']/g, c => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+  ));
 }

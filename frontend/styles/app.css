@@ -912,3 +912,153 @@
       background: #232427;
       border-color: var(--border-light);
     }
+
+    /* ---------------------------------------------------------------------
+       Graphite, refined.
+       ---------------------------------------------------------------------
+       The first pass only recoloured the variables. What actually makes a
+       tool feel considered is the structure underneath, so this pass changes
+       how the chrome is built rather than what shade it is:
+
+       - Depth comes from one hairline and a faint top highlight, not from a
+         fill. Panels sit ON the background instead of being boxes drawn over
+         it, which is what keeps a dense sidebar from reading as a stack of
+         competing rectangles.
+       - Section titles lose the gold shout and become quiet uppercase labels
+         with a rule running to the edge, so the eye lands on the data.
+       - Numbers use tabular figures, so a column of grades lines up on the
+         decimal and can be compared by shape.
+       - Every interactive surface gets a real transition and a focus ring,
+         which is most of what separates "styled" from "finished".
+
+       Grade colours are untouched here as everywhere else. */
+
+    html[data-theme="graphite"] .control-card {
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.022), transparent 42%);
+      border: 1px solid #2d2f34;
+      border-radius: 10px;
+      padding: 13px;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045);
+      transition: border-color 0.18s ease, background 0.18s ease;
+    }
+    html[data-theme="graphite"] .control-card:hover {
+      border-color: #3d4046;
+    }
+
+    /* Quiet section headings with a rule, instead of gold capitals. */
+    html[data-theme="graphite"] .section-title {
+      color: #8b8d94;
+      font-size: 10px;
+      letter-spacing: 1.4px;
+      gap: 10px;
+      margin: 4px 0 2px;
+    }
+    html[data-theme="graphite"] .section-title::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: linear-gradient(90deg, #34363b, transparent);
+    }
+
+    /* Figures that can be compared down a column. */
+    html[data-theme="graphite"] #app-header .meta div b,
+    html[data-theme="graphite"] .stat .v,
+    html[data-theme="graphite"] .table-container td,
+    html[data-theme="graphite"] .cutoff-value,
+    html[data-theme="graphite"] .meta-val {
+      font-variant-numeric: tabular-nums;
+      font-feature-settings: 'tnum' 1, 'cv05' 1;
+    }
+
+    /* The header reads as one bar: no shadow, no gradient, just a rule. */
+    html[data-theme="graphite"] #app-header .meta div b { font-weight: 650; }
+    html[data-theme="graphite"] #app-header .meta-group-label { color: #7c7e85; }
+    html[data-theme="graphite"] #app-header .meta .gold-val { color: var(--gold); }
+
+    /* Buttons: flat until touched, then they lift slightly. */
+    html[data-theme="graphite"] .vbtn,
+    html[data-theme="graphite"] .btn-small,
+    html[data-theme="graphite"] .btn-sidebar {
+      background: #212226;
+      border: 1px solid #33353a;
+      border-radius: 7px;
+      transition: background 0.16s ease, border-color 0.16s ease, transform 0.16s ease;
+    }
+    html[data-theme="graphite"] .vbtn:hover,
+    html[data-theme="graphite"] .btn-small:hover,
+    html[data-theme="graphite"] .btn-sidebar:hover {
+      background: #292b30;
+      border-color: #45484f;
+      transform: translateY(-1px);
+    }
+    html[data-theme="graphite"] .vbtn:active,
+    html[data-theme="graphite"] .btn-small:active,
+    html[data-theme="graphite"] .btn-sidebar:active { transform: translateY(0); }
+    html[data-theme="graphite"] .vbtn.active {
+      background: rgba(194, 163, 77, 0.14);
+      border-color: rgba(194, 163, 77, 0.55);
+      color: var(--gold-soft);
+    }
+
+    /* One consistent focus ring, which the other themes inherit by habit. */
+    html[data-theme="graphite"] button:focus-visible,
+    html[data-theme="graphite"] input:focus-visible,
+    html[data-theme="graphite"] select:focus-visible,
+    html[data-theme="graphite"] [tabindex]:focus-visible {
+      outline: 2px solid rgba(194, 163, 77, 0.75);
+      outline-offset: 2px;
+      border-radius: 6px;
+    }
+
+    /* Table: rules instead of stripes, and a header that stays put. */
+    html[data-theme="graphite"] .table-container thead th {
+      background: #1d1e21;
+      border-bottom: 1px solid #34363b;
+      color: #8b8d94;
+      font-weight: 650;
+      letter-spacing: 0.5px;
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
+    html[data-theme="graphite"] .table-container td {
+      border-bottom: 1px solid rgba(255, 255, 255, 0.045);
+    }
+    html[data-theme="graphite"] .table-container tbody tr:hover td {
+      background: rgba(255, 255, 255, 0.035);
+    }
+
+    /* Scrollbars that belong to the theme rather than to the OS. */
+    html[data-theme="graphite"] * {
+      scrollbar-width: thin;
+      scrollbar-color: #3a3c41 transparent;
+    }
+    html[data-theme="graphite"] *::-webkit-scrollbar { width: 9px; height: 9px; }
+    html[data-theme="graphite"] *::-webkit-scrollbar-track { background: transparent; }
+    html[data-theme="graphite"] *::-webkit-scrollbar-thumb {
+      background: #34363b;
+      border-radius: 6px;
+      border: 2px solid #1d1e21;
+    }
+    html[data-theme="graphite"] *::-webkit-scrollbar-thumb:hover { background: #45484f; }
+
+    /* Floating chrome over the canvas: a touch more blur, a touch less fill,
+       so the 3D view stays the brightest thing on screen. */
+    html[data-theme="graphite"] .scene-toolbar,
+    html[data-theme="graphite"] .scene-legend,
+    html[data-theme="graphite"] #viewport-hint-card {
+      background: rgba(23, 23, 26, 0.82);
+      backdrop-filter: blur(10px) saturate(1.1);
+      border: 1px solid #34363b;
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    }
+    html[data-theme="graphite"] .scene-legend .sl-title { color: #8b8d94; }
+
+    /* The sidebar meets the viewport on a hairline, not a hard edge. */
+    html[data-theme="graphite"] .sidebar { border-right: 1px solid #2a2c30; }
+    html[data-theme="graphite"] .right-sidebar { border-left: 1px solid #2a2c30; }
+    html[data-theme="graphite"] .styled-select {
+      background: #212226;
+      border: 1px solid #33353a;
+      border-radius: 7px;
+    }
