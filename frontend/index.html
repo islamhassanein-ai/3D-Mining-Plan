@@ -35,7 +35,8 @@
       <div class="meta" id="header-stats" style="display:none;">
         <div class="meta-group">
           <span class="meta-group-label">DD</span>
-          <div><b id="dd-sum-holes">0</b>Holes</div>
+          <div><b id="dd-sum-holes">0</b>Drilled</div>
+          <div id="dd-sum-planned-box"><b id="dd-sum-planned">0</b>Planned</div>
           <div><b id="dd-sum-meters">0</b>Meters</div>
           <div><b id="dd-sum-avg">0</b>Avg g/t</div>
           <div><b id="dd-sum-peak" class="gold-val">0</b>Peak g/t</div>
@@ -887,7 +888,14 @@
     function updateDdAndTrenchSummary(data) {
       const { drillholes: dd, trenches: tr } = window.computeProjectSummary(data);
 
-      document.getElementById('dd-sum-holes').textContent = dd.holes;
+      // Drilled and planned are counted separately: a bare "22 holes" on a
+      // project that is 13 planned overstates what has actually been drilled.
+      document.getElementById('dd-sum-holes').textContent = dd.drilled;
+      document.getElementById('dd-sum-planned').textContent = dd.planned;
+      // Hide the planned figure entirely when there are none, rather than
+      // showing a zero that implies the project ought to have some.
+      document.getElementById('dd-sum-planned-box').style.display =
+        dd.planned ? '' : 'none';
       document.getElementById('dd-sum-meters').textContent = `${dd.meters.toFixed(0)}m`;
       document.getElementById('dd-sum-avg').textContent = dd.sampleCount ? dd.avgGrade.toFixed(2) : '0';
       document.getElementById('dd-sum-peak').textContent = dd.peakGrade.toFixed(1);

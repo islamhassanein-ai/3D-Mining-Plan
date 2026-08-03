@@ -202,11 +202,38 @@ async function initStaticViewer() {
       });
     }
 
+    // Keep the WebGL canvas in step with the panel slide, rather than
+    // stretching until a single trailing resize snaps it back.
+    function animateResize() {
+      const start = performance.now();
+      const tick = () => {
+        window.dispatchEvent(new Event('resize'));
+        if (performance.now() - start < 300) requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    }
+
+    // Picking a hole is a request to read it, so the inspector has to be on
+    // screen for the click to mean anything.
+    function revealInspector() {
+      const body = document.getElementById('app-body');
+      if (!body || !body.classList.contains('hide-right')) return;
+      body.classList.remove('hide-right');
+      const tab = document.getElementById('right-edge-tab');
+      if (tab) tab.innerHTML = '&#9654;';
+      animateResize();
+    }
+
     // 11. SceneSelection — wires click → inspector
     viewport.selection = new SceneSelection(viewport, (type, selData) => {
       if (!inspector) return;
       if (type === 'interval') inspector.loadCollar(selData.collarId, selData.intervalId);
       else if (type === 'trace') inspector.loadCollar(selData.collarId);
+      else return;
+      // The shell starts with the right panel collapsed (hide-right), so
+      // without this a click loaded the hole into a panel nobody could see and
+      // the export looked like clicking did nothing at all.
+      revealInspector();
     });
 
     // 12. SceneHover — adds overlay group to scene immediately
@@ -359,7 +386,12 @@ async function initStaticViewer() {
     const summary = computeProjectSummary(data);
     const setText = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
     setText('header-project-name', payload.project.name || '');
-    setText('dd-sum-holes',   summary.drillholes.holes);
+    // Drilled and planned counted separately -- see computeProjectSummary for
+    // why planned holes are also kept out of the metres and grade figures.
+    setText('dd-sum-holes',   summary.drillholes.drilled);
+    setText('dd-sum-planned', summary.drillholes.planned);
+    const plannedBox = document.getElementById('dd-sum-planned-box');
+    if (plannedBox) plannedBox.style.display = summary.drillholes.planned ? '' : 'none';
     setText('dd-sum-meters',  summary.drillholes.meters.toFixed(0));
     setText('dd-sum-avg',     summary.drillholes.avgGrade.toFixed(2));
     setText('dd-sum-peak',    summary.drillholes.peakGrade.toFixed(2));
@@ -393,15 +425,24 @@ async function initStaticViewer() {
       }
     }
 
-    // 25b. Panel collapse tabs
+    // 25b. Panel collapse tabs. The chevron always points toward where the
+    // panel would open, matching the live app.
     const appBody = document.getElementById('app-body');
     const leftTab  = document.getElementById('left-edge-tab');
     const rightTab = document.getElementById('right-edge-tab');
     if (leftTab && appBody) {
-      leftTab.onclick = () => appBody.classList.toggle('hide-left');
+      leftTab.onclick = () => {
+        const collapsed = appBody.classList.toggle('hide-left');
+        leftTab.innerHTML = collapsed ? '&#9654;' : '&#9664;';
+        animateResize();
+      };
     }
     if (rightTab && appBody) {
-      rightTab.onclick = () => appBody.classList.toggle('hide-right');
+      rightTab.onclick = () => {
+        const collapsed = appBody.classList.toggle('hide-right');
+        rightTab.innerHTML = collapsed ? '&#9664;' : '&#9654;';
+        animateResize();
+      };
     }
 
     // 26. Draggable modal support
