@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { DampedCameraControls } from './camera_controls.js';
+import { applySceneTheme } from './scene_theme.js';
 import { DrillholeTraces } from './drillhole_traces.js';
 import { AssayIntervals } from './assay_intervals.js';
 import { LithologyIntervals } from './lithology_intervals.js';
@@ -193,37 +194,13 @@ export function init3DViewport(container, options = {}) {
   }
   animate();
 
-  // Scene-side half of the light/dark switch. The DOM half is pure CSS
-  // variables, but the WebGL viewport has no cascade -- background, fill
-  // light and grid have to be set explicitly. Grade colours are deliberately
-  // untouched: they encode data and must not shift with the theme.
-  const SCENE_THEMES = {
-    dark:     { bg: 0x0b0f19, ambient: 0.60, fill: 0x3b82f6, fillIntensity: 0.30, grid: [0x374151, 0x1f2937] },
-    light:    { bg: 0xe6ecf4, ambient: 0.85, fill: 0x3b82f6, fillIntensity: 0.12, grid: [0x94a3b8, 0xcbd5e1] },
-    // Neutral charcoal with a white fill light instead of a blue one: any
-    // tint in the fill lands on every grade colour at once and shifts how it
-    // reads, which defeats the point of a reference-grade view.
-    graphite: { bg: 0x17171a, ambient: 0.66, fill: 0xffffff, fillIntensity: 0.14, grid: [0x3f4046, 0x2a2b2f] },
-  };
-
+  // Scene-side half of the light/dark switch -- the palette and the applier
+  // live in scene_theme.js, shared with the standalone export so the two
+  // cannot drift.
   function setTheme(theme) {
-    const cfg = SCENE_THEMES[theme] || SCENE_THEMES.dark;
-    scene.background = new THREE.Color(cfg.bg);
-    // On a pale background the cool fill light muddies the surface, and the
-    // ambient has to come down or everything flattens out.
-    ambientLight.intensity = cfg.ambient;
-    dirLight2.color.setHex(cfg.fill);
-    dirLight2.intensity = cfg.fillIntensity;
-
-    const wasVisible = gridHelper.visible;
-    scene.remove(gridHelper);
-    gridHelper.geometry.dispose();
-    gridHelper.material.dispose();
-    gridHelper = new THREE.GridHelper(5000, 100, cfg.grid[0], cfg.grid[1]);
-    gridHelper.position.y = 0;
-    gridHelper.visible = wasVisible;
-    gridHelper.userData.excludeFromFit = true;
-    scene.add(gridHelper);
+    gridHelper = applySceneTheme(theme, {
+      scene, ambientLight, fillLight: dirLight2, gridHelper,
+    });
   }
 
   // Return API object to control scene state externally

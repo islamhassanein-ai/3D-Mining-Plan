@@ -51,7 +51,10 @@ def load_logo_data_uri(frontend_dir: str) -> str:
 # project name containing a sentinel string cannot inject content.
 _HTML_TEMPLATE = (
     '<!DOCTYPE html>\n'
-    '<html lang="en">\n'
+    # data-theme is set here rather than by the bundle so the document paints
+    # in the right theme immediately; the viewer rewrites it on load from
+    # whatever the reader last chose.
+    '<html lang="en" data-theme="dark">\n'
     '<head>\n'
     '  <meta charset="UTF-8">\n'
     '  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n'

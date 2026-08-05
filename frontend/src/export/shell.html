@@ -18,6 +18,7 @@
       </div>
     </div>
     <span class="export-chip">STATIC EXPORT</span>
+    <div class="header-right">
     <div class="meta" id="header-stats" style="display:none;">
       <div class="meta-group">
         <span class="meta-group-label">DD</span>
@@ -35,6 +36,22 @@
         <div><b id="tr-sum-avg">0</b>Avg g/t</div>
         <div><b id="tr-sum-peak" class="gold-val">0</b>Peak g/t</div>
       </div>
+    </div>
+    <!-- Same three themes as the live app. The export is opened on someone
+         else's machine, in whatever light they happen to be sitting in, and
+         it is the one build they cannot change the defaults of -- so the
+         switch matters more here than in the app, not less. -->
+    <div id="theme-toggle" role="group" aria-label="Colour theme">
+      <button type="button" data-theme-set="dark" title="Dark theme" aria-label="Dark theme">
+        <svg viewBox="0 0 24 24"><path fill="currentColor" d="M17.75,4.09L15.22,6.03L16.13,9.09L13.5,7.28L10.87,9.09L11.78,6.03L9.25,4.09L12.44,4L13.5,1L14.56,4L17.75,4.09M21.25,11L19.61,12.25L20.2,14.23L18.5,13.06L16.8,14.23L17.39,12.25L15.75,11L17.81,10.95L18.5,9L19.19,10.95L21.25,11M18.97,15.95C19.8,15.87 20.69,17.05 20.16,17.8C19.84,18.25 19.5,18.67 19.08,19.07C15.17,23 8.84,23 4.94,19.07C1.03,15.17 1.03,8.83 4.94,4.93C5.34,4.53 5.76,4.17 6.21,3.85C6.96,3.32 8.14,4.21 8.06,5.04C7.79,7.9 8.75,10.87 10.95,13.06C13.14,15.26 16.1,16.22 18.97,15.95Z"/></svg>
+      </button>
+      <button type="button" data-theme-set="light" title="Light theme" aria-label="Light theme">
+        <svg viewBox="0 0 24 24"><path fill="currentColor" d="M12,8A4,4 0 0,0 8,12A4,4 0 0,0 12,16A4,4 0 0,0 16,12A4,4 0 0,0 12,8M12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6A6,6 0 0,1 18,12A6,6 0 0,1 12,18M20,8.69V4H15.31L12,0.69L8.69,4H4V8.69L0.69,12L4,15.31V20H8.69L12,23.31L15.31,20H20V15.31L23.31,12L20,8.69Z"/></svg>
+      </button>
+      <button type="button" data-theme-set="graphite" title="Graphite theme (neutral, reference-grade colour)" aria-label="Graphite theme">
+        <svg viewBox="0 0 24 24"><path fill="currentColor" d="M12,2L2,7V17L12,22L22,17V7L12,2M12,4.15L19.13,7.7L12,11.26L4.87,7.7L12,4.15M4,9.3L11,12.8V19.5L4,16V9.3M13,19.5V12.8L20,9.3V16L13,19.5Z"/></svg>
+      </button>
+    </div>
     </div>
   </div>
 

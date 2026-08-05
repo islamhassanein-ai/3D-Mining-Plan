@@ -31,6 +31,19 @@ import { SceneLegend } from '../components/scene_legend.js';
 import { FocusHighlight } from '../scene/focus_highlight.js';
 import { computeProjectSummary } from '../services/project_summary.js';
 import { StaticDataSource } from '../services/static_data_source.js';
+import { applySceneTheme, isTheme } from '../scene/scene_theme.js';
+
+// ── Theme switch ──────────────────────────────────────────────────────────
+// Same three themes as the live app, and the same split: CSS variables carry
+// the DOM, applySceneTheme carries the WebGL viewport.
+//
+// Unlike the app, the choice is NOT remembered between openings. The app
+// persists it in localStorage, but this bundle is barred from browser storage
+// outright -- the export is a redistributable file, and the ban is what
+// guarantees it can never read a session token out of the origin it happens
+// to be opened on (spec 006, enforced by TestBundlePurity). Re-picking a
+// theme per session is a small price for a file that provably carries no
+// credentials.
 
 // ── Keyboard shortcut overlay ─────────────────────────────────────────────
 // shell.html uses inline onclick="hideShortcutHelp()" so these must live on window.
@@ -76,7 +89,10 @@ async function initStaticViewer() {
     renderer.setScissorTest(true);
     domContainer.appendChild(renderer.domElement);
 
-    scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+    // The ambient, the fill light and the grid are all named and mutable
+    // because the theme switch below rewrites them.
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+    scene.add(ambientLight);
     const dirLight1 = new THREE.DirectionalLight(0xffffff, 0.8);
     dirLight1.position.set(1, 2, 1).normalize();
     scene.add(dirLight1);
@@ -86,7 +102,7 @@ async function initStaticViewer() {
     // Reference geometry, tagged so the camera fit ignores it -- the grid
     // spans 5 km and would otherwise dominate the framing. (visibleBounds
     // also rejects these by type, belt and braces.)
-    const gridHelper = new THREE.GridHelper(5000, 100, 0x374151, 0x1f2937);
+    let gridHelper = new THREE.GridHelper(5000, 100, 0x374151, 0x1f2937);
     gridHelper.userData.excludeFromFit = true;
     scene.add(gridHelper);
     const axesHelper = new THREE.AxesHelper(100);
@@ -147,6 +163,27 @@ async function initStaticViewer() {
     // blank on my machine" report something to inspect from the console --
     // there is no dev server or source map to fall back on.
     window.__miningViewport = viewport;
+
+    // 6b. Theme switch: <html data-theme> drives the DOM, applySceneTheme the
+    // viewport. Grade colours are the same in all three -- they encode data.
+    function setTheme(theme) {
+      const next = isTheme(theme) ? theme : 'dark';
+      document.documentElement.dataset.theme = next;
+      document.querySelectorAll('#theme-toggle button').forEach(b => {
+        b.classList.toggle('active', b.dataset.themeSet === next);
+      });
+      gridHelper = applySceneTheme(next, {
+        scene, ambientLight, fillLight: dirLight2, gridHelper,
+      });
+    }
+    viewport.setTheme = setTheme;
+
+    document.querySelectorAll('#theme-toggle button').forEach(b => {
+      b.addEventListener('click', () => setTheme(b.dataset.themeSet));
+    });
+    // The document is served with data-theme="dark" so it paints without a
+    // flash; this syncs the scene and the toggle's active state with it.
+    setTheme(document.documentElement.dataset.theme);
 
     // 7. Resize observer
     new ResizeObserver(() => {

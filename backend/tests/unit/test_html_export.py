@@ -303,6 +303,16 @@ class TestAssembly:
         assert "<title>" in doc
         assert "Content-Security-Policy" in doc
 
+    def test_opens_in_the_dark_theme(self):
+        """The document must carry a theme before any script runs.
+
+        The viewer can switch themes, but it cannot do so until the bundle
+        parses -- and a document with no data-theme paints unstyled first.
+        Serving the attribute in the markup is what avoids that flash.
+        """
+        doc = _assemble().decode()
+        assert '<html lang="en" data-theme="dark">' in doc
+
 
 # ── T023 — Static-bundle purity test ─────────────────────────────────────
 
