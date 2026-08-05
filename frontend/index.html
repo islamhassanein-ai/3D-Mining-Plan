@@ -605,7 +605,7 @@
         const histoContainer = document.getElementById('grade-histogram-container');
         histoContainer.innerHTML = '';
         const gradeHistogram = new window.GradeHistogram(histoContainer);
-        gradeHistogram.setData(data.drillholes);
+        gradeHistogram.setData(data.drillholes, data.trenches);
         const cutoff = new window.CutoffSlider(sliderContainer, (val) => {
           viewport3D.assaysRenderer.setGradeCutoff(val);
           viewport3D.trenchesRenderer.setGradeCutoff(val);
@@ -1092,7 +1092,7 @@
         const histoContainer = document.getElementById('grade-histogram-container');
         histoContainer.innerHTML = '';
         const gradeHistogram = new window.GradeHistogram(histoContainer);
-        gradeHistogram.setData(data.drillholes);
+        gradeHistogram.setData(data.drillholes, data.trenches);
         const cutoff = new window.CutoffSlider(sliderContainer, (val) => {
           viewport3D.assaysRenderer.setGradeCutoff(val);
           viewport3D.trenchesRenderer.setGradeCutoff(val);

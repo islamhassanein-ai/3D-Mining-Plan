@@ -333,7 +333,7 @@ async function initStaticViewer() {
     // 20. Cutoff slider + grade histogram
     const histoContainer = document.getElementById('grade-histogram-container');
     const gradeHistogram = histoContainer ? new GradeHistogram(histoContainer) : null;
-    if (gradeHistogram) gradeHistogram.setData(data.drillholes);
+    if (gradeHistogram) gradeHistogram.setData(data.drillholes, data.trenches);
     const sliderContainer = document.getElementById('cutoff-slider-container');
     if (sliderContainer) {
       new CutoffSlider(sliderContainer, (val) => {
