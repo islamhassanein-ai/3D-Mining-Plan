@@ -56,16 +56,22 @@ async def create_import(
     issues = []
     import_mode = "four_file"
 
-    # Helper to clean parsing issues. The combined parser emits the missing-
-    # Type-column warning with an explicit "type": "warning" field; respect it
-    # so a warning does not become a blocking parse error.
+    # Helper to clean parsing issues. The combined parser emits advisory items
+    # (missing Type column, unsampled trench gaps) with an explicit
+    # "type": "warning" field; respect it so a warning does not become a
+    # blocking parse error. The wording follows the severity too -- an audit-log
+    # line reading "parse error" for a non-blocking warning sends people
+    # hunting for a failure that never happened. The "parse_error" rule key is
+    # deliberately left alone: it is a machine identifier that callers filter
+    # on, and "type" already carries the severity.
     def add_parse_errors(errors: list, file_type: str):
         for err in errors:
             issue_type = err.get("type", "error")
+            label = "parse warning" if issue_type == "warning" else "parse error"
             issues.append({
                 "type": issue_type,
                 "rule": "parse_error",
-                "message": f"{file_type} CSV parse error on row {err['row']}: {err['error']}",
+                "message": f"{file_type} CSV {label} on row {err['row']}: {err['error']}",
                 "hole_id": err['raw_data'].get('hole_id', '') if isinstance(err['raw_data'], dict) else '',
                 "row": err['row']
             })

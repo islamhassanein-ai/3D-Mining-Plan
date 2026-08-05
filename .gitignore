@@ -170,3 +170,7 @@ backend/uploads/*
 .claude/
 .gemini/
 .specify/
+
+# Client survey data -- confidential, never source. The tracked files directly
+# under sample_data/ are synthetic fixtures; real exports go in subfolders.
+sample_data/*/
