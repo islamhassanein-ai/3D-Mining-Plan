@@ -1,4 +1,86 @@
+from statistics import median
 from typing import List, Dict, Any, Tuple
+
+# --- Spatial outlier detection ------------------------------------------------
+# A hole/trench this many times further from the batch's centre than a typical
+# hole is treated as misplaced rather than merely remote.
+_OUTLIER_FACTOR = 10.0
+# ...but never flag anything closer than this, so a genuinely regional survey
+# with holes a few kilometres apart is not reported. A coordinate typo displaces
+# a hole by tens to thousands of kilometres, far beyond this floor.
+_OUTLIER_FLOOR_M = 10_000.0
+# Below this many holes there is no cluster to be an outlier from.
+_OUTLIER_MIN_HOLES = 3
+
+
+def _check_spatial_outliers(
+    collars: List[Dict[str, Any]],
+    trenches: List[Dict[str, Any]] = None,
+) -> List[Dict[str, Any]]:
+    """Flags holes/trenches sitting far outside the cluster formed by the batch.
+
+    A single mistyped coordinate passes every per-value check -- 208651 is a
+    perfectly valid UTM northing -- yet it wrecks the 3D view, because the
+    camera frames the bounding box of all visible geometry
+    (``frontend/src/scene/scene_loader.js`` ``visibleBounds``). One hole
+    displaced 2000 km stretches that box ~15,000x, shrinking the real prospect
+    to a fraction of a pixel: the scene looks blank until the offending layer
+    is switched off.
+
+    Detection is median-based so that a group of bad rows cannot drag the
+    reference centre along with it: an outlying HOLE is measured against the
+    median hole position, and the cutoff is a multiple of the median hole
+    distance. Holes are scored once, by their own median point, so a 75-row
+    trench yields one issue rather than 75.
+    """
+    points: Dict[str, Dict[str, Any]] = {}
+
+    def add(hole_id, easting, northing, row):
+        if not hole_id or easting is None or northing is None:
+            return
+        entry = points.setdefault(hole_id, {"e": [], "n": [], "row": row})
+        entry["e"].append(easting)
+        entry["n"].append(northing)
+        if entry["row"] is None:
+            entry["row"] = row
+
+    for i, c in enumerate(collars or [], start=1):
+        add(c.get("hole_id"), c.get("easting"), c.get("northing"), c.get("csv_row", i))
+    for j, t in enumerate(trenches or [], start=1):
+        add(t.get("trench_id"), t.get("easting"), t.get("northing"), t.get("csv_row", j))
+
+    if len(points) < _OUTLIER_MIN_HOLES:
+        return []
+
+    centres = {h: (median(v["e"]), median(v["n"])) for h, v in points.items()}
+    mid_e = median(e for e, _ in centres.values())
+    mid_n = median(n for _, n in centres.values())
+
+    distances = {
+        h: ((e - mid_e) ** 2 + (n - mid_n) ** 2) ** 0.5
+        for h, (e, n) in centres.items()
+    }
+    cutoff = max(_OUTLIER_FLOOR_M, _OUTLIER_FACTOR * median(distances.values()))
+
+    issues = []
+    for hole_id, dist in sorted(distances.items(), key=lambda kv: -kv[1]):
+        if dist <= cutoff:
+            continue
+        e, n = centres[hole_id]
+        issues.append({
+            "type": "warning",
+            "rule": "spatial_outlier",
+            "message": (
+                f"'{hole_id}' sits {dist / 1000:.1f} km from the centre of this batch "
+                f"(E {e:,.0f}, N {n:,.0f}). Check its Easting/Northing for a typo -- a "
+                "hole this far out stretches the 3D camera bounds until the rest of the "
+                "site is too small to see."
+            ),
+            "hole_id": hole_id,
+            "row": points[hole_id]["row"],
+        })
+    return issues
+
 
 def validate_import_batch(
     collars: List[Dict[str, Any]],
@@ -25,6 +107,10 @@ def validate_import_batch(
     ``hole_type``s is an error. ``check_coordinate_anomalies`` is run per zone
     group (collars + trench points) rather than once for the whole file, so a
     zone with swapped coordinates is reported against that zone alone.
+
+    ``_check_spatial_outliers`` then runs across the whole batch (both paths,
+    all zones) to catch a mistyped coordinate that is individually valid but
+    lands the hole far from every other one.
     """
     issues = []
 
@@ -168,6 +254,10 @@ def validate_import_batch(
                         "hole_id": c["hole_id"],
                         "row": i
                     })
+
+    # 2b. Spatial outliers. Runs on both paths and across zones, since a typo
+    # that lands a hole in the wrong zone group is exactly what this catches.
+    issues.extend(_check_spatial_outliers(collars, trenches))
 
     # 3. Orphan hole_id checks (Surveys, Assays, Lithologies must have a collar in this batch)
     for i, s in enumerate(surveys, start=1):

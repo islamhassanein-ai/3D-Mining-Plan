@@ -102,3 +102,77 @@ def test_validate_rqd_and_core_recovery():
     assert res3["valid"] is True
     assert not res3["issues"]
 
+
+
+# --- Spatial outlier detection (rule: spatial_outlier) ---
+
+def _site_collar(hole_id, easting, northing, row):
+    return {
+        "hole_id": hole_id, "easting": easting, "northing": northing,
+        "elevation": 300.0, "hole_type": "DD", "zone": "Adel", "csv_row": row,
+    }
+
+def test_spatial_outlier_flags_hole_far_from_the_batch():
+    # DH04's northing was typed as a copy of its easting -- valid UTM, but
+    # ~2,259 km south of the site.
+    collars = [
+        _site_collar("DH01", 208650.0, 2467800.0, 2),
+        _site_collar("DH02", 208700.0, 2467850.0, 3),
+        _site_collar("DH03", 208750.0, 2467900.0, 4),
+        _site_collar("DH04", 208651.0, 208651.0, 5),
+    ]
+    res = validate_import_batch(collars, [], [], [])
+    outliers = [i for i in res["issues"] if i["rule"] == "spatial_outlier"]
+    assert len(outliers) == 1
+    assert outliers[0]["hole_id"] == "DH04"
+    assert outliers[0]["row"] == 5
+    assert outliers[0]["type"] == "warning"
+    assert "2259" in outliers[0]["message"].replace(".", "")
+    # A warning must not block the import.
+    assert res["valid"] is True
+
+def test_spatial_outlier_silent_on_a_tight_site():
+    collars = [
+        _site_collar("DH01", 208650.0, 2467800.0, 2),
+        _site_collar("DH02", 208700.0, 2467850.0, 3),
+        _site_collar("DH03", 208750.0, 2467900.0, 4),
+    ]
+    res = validate_import_batch(collars, [], [], [])
+    assert not [i for i in res["issues"] if i["rule"] == "spatial_outlier"]
+
+def test_spatial_outlier_silent_on_a_regional_survey():
+    # Holes several km apart are legitimate; the 10 km floor keeps them quiet.
+    collars = [
+        _site_collar("DH01", 200000.0, 2460000.0, 2),
+        _site_collar("DH02", 203000.0, 2463000.0, 3),
+        _site_collar("DH03", 206000.0, 2466000.0, 4),
+        _site_collar("DH04", 209000.0, 2469000.0, 5),
+    ]
+    res = validate_import_batch(collars, [], [], [])
+    assert not [i for i in res["issues"] if i["rule"] == "spatial_outlier"]
+
+def test_spatial_outlier_reports_a_multi_point_trench_once():
+    # A 60-point trench with a bad northing yields ONE issue, not 60.
+    collars = [
+        _site_collar("DH01", 208650.0, 2467800.0, 2),
+        _site_collar("DH02", 208700.0, 2467850.0, 3),
+        _site_collar("DH03", 208750.0, 2467900.0, 4),
+    ]
+    trenches = [
+        {"trench_id": "TR01", "easting": 208660.0 + i, "northing": 208660.0 + i,
+         "elevation": 290.0, "hole_type": "TR", "zone": "Adel", "csv_row": 100 + i}
+        for i in range(60)
+    ]
+    res = validate_import_batch(collars, [], [], [], trenches=trenches)
+    outliers = [i for i in res["issues"] if i["rule"] == "spatial_outlier"]
+    assert len(outliers) == 1
+    assert outliers[0]["hole_id"] == "TR01"
+
+def test_spatial_outlier_needs_a_cluster_to_compare_against():
+    # Two holes cannot establish a centre; no issue either way.
+    collars = [
+        _site_collar("DH01", 208650.0, 2467800.0, 2),
+        _site_collar("DH02", 208651.0, 208651.0, 3),
+    ]
+    res = validate_import_batch(collars, [], [], [])
+    assert not [i for i in res["issues"] if i["rule"] == "spatial_outlier"]
