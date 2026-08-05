@@ -68,10 +68,11 @@ export class CutoffSlider {
   constructor(container, onChangeCallback) {
     this.container = typeof container === 'string' ? document.getElementById(container) : container;
     this.onChange = onChangeCallback;
-    // Opens at the bottom of the first real grade bucket rather than 0, so
-    // the initial view is already free of the sub-0.10 background samples
-    // that otherwise dominate a trace visually while saying nothing.
-    this.value = 0.1;
+    // Opens at 0: the scene shows every sample that was loaded, including
+    // unsampled intervals, and hiding anything is the user's decision. An
+    // opening cutoff of 0.10 quietly dropped samples from the first view,
+    // which reads as missing data rather than as a filter.
+    this.value = 0.0;
     this.min = 0.0;
     this.max = MAX_GRADE;
 
@@ -81,9 +82,9 @@ export class CutoffSlider {
   init() {
     this.injectStyles();
     this.render();
-    // The opening value is a real filter, not just a label -- push it to the
-    // scene now, or the view shows every background sample while the readout
-    // claims a 0.10 cutoff.
+    // Push the opening value even though it hides nothing: it is what keeps
+    // the renderers' cutoff and this readout agreeing from the first frame,
+    // and it stays correct if the opening value ever moves off 0 again.
     if (this.onChange) this.onChange(this.value);
   }
 
