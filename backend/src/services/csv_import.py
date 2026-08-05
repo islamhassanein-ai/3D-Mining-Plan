@@ -436,11 +436,15 @@ def parse_combined_csv(file_content: bytes) -> Tuple[List[Dict[str, Any]], List[
     """Parses a combined Master Reference CSV.
 
     Required columns: ``hole_id`` plus easting/northing/elevation (under any
-    alias). On **sample continuation rows** for DD/RC (same hole_id, no X/Y/Z),
-    easting/northing/elevation are allowed to be blank.
+    alias). Coordinates are mandatory only on the **first row of each
+    hole/trench**; on continuation rows (same hole_id) they may be blank.
 
     **Multi-row TR/CH/FC**: each row is a sample point with its own X/Y/Z and
-    optional Grade/Sample_ID/From/To. Rows connect in CSV order.
+    optional Grade/Sample_ID/From/To. Rows connect in CSV order. A continuation
+    row with blank X/Y/Z is an **unsampled gap** (e.g. Sample_ID ``NS``): it
+    raises a review warning and is dropped, so the polyline runs straight from
+    the previous sampled point to the next one rather than bending through a
+    guessed vertex.
 
     **DD/RC sample rows**: continuation rows after the collar row carry
     Sample_ID, From, To, Grade and are routed as assay intervals.
@@ -549,15 +553,39 @@ def parse_combined_csv(file_content: bytes) -> Tuple[List[Dict[str, Any]], List[
                 errors.append({"row": i, "error": f"hole_id '{hole_id}' type mismatch: first row was {trench_meta[hole_id]['hole_type']}, this row is {hole_type}", "raw_data": row})
                 continue
 
-            # --- Coordinates (optional on DD/RC sample continuation rows) ---
+            # --- Coordinates ---
+            # Required only on the first row of each hole/trench. On continuation
+            # rows blank X/Y/Z is legitimate: DD/RC sample rows carry depths
+            # instead, and a TR/CH/FC row with no coordinates is an unsampled gap
+            # (NS) that has no surveyed position to place a vertex at.
             e_str  = get_canonical(row, "easting").strip()
             n_str  = get_canonical(row, "northing").strip()
             el_str = get_canonical(row, "elevation").strip()
             coords_blank = (e_str == "" and n_str == "" and el_str == "")
-            is_dd_rc_continuation = hole_type in _COLLAR_TYPES and hole_id in collar_meta
+            is_dd_rc_continuation  = hole_type in _COLLAR_TYPES and hole_id in collar_meta
+            is_trench_continuation = hole_type in _TRENCH_TYPES and hole_id in trench_meta
 
-            if coords_blank and not is_dd_rc_continuation:
+            if coords_blank and not (is_dd_rc_continuation or is_trench_continuation):
                 errors.append({"row": i, "error": "Easting, Northing, Elevation are required for the first row of each hole/trench", "raw_data": row})
+                continue
+
+            if coords_blank and is_trench_continuation:
+                # Unsampled gap. Emitting no vertex keeps the polyline running
+                # straight from the previous sampled point to the next one; a
+                # vertex at a guessed position would bend the trench.
+                gap_from = get_canonical(row, "from_depth").strip()
+                gap_to   = get_canonical(row, "to_depth").strip()
+                interval = f" {gap_from}-{gap_to} m" if gap_from and gap_to else ""
+                errors.append({
+                    "row": i,
+                    "error": (
+                        f"Trench '{hole_id}' interval{interval} has no X/Y/Z — read as an "
+                        "unsampled gap and skipped; the polyline stays continuous across it. "
+                        "Supply coordinates if this interval was surveyed."
+                    ),
+                    "raw_data": row,
+                    "type": "warning",
+                })
                 continue
 
             easting = northing = elevation = None

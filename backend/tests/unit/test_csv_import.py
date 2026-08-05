@@ -191,6 +191,39 @@ def test_combined_csv_row_numbers_match_spreadsheet_lines():
     real_errors = [e for e in errors if e.get("type", "error") == "error"]
     assert real_errors[0]["row"] == 3  # header=1, GOOD1=2, BAD1=3
 
+def test_combined_csv_trench_blank_coords_continuation_is_gap_warning():
+    # A TR continuation row with no X/Y/Z is an unsampled gap: warning, no row
+    # emitted, so the polyline runs straight from the 1-2 m point to the 7-8 m one.
+    csv_data = (
+        b"Hole Id,X,Y,Z,Dip,Azimuth,Total_Length,Type,Sample_ID,From,To,Grade\n"
+        b"TR1,1,2,3,0,90,10,TR,S01,0,1,0.5\n"
+        b"TR1,2,2,3,,,,TR,S02,1,2,0.6\n"
+        b"TR1,,,,,,,TR,NS,2,7,\n"
+        b"TR1,7,2,3,,,,TR,S03,7,8,0.7\n"
+    )
+    parsed, errors = parse_combined_csv(csv_data)
+    real_errors = [e for e in errors if e.get("type", "error") == "error"]
+    warnings = [e for e in errors if e.get("type") == "warning"]
+    assert not real_errors
+    assert len(warnings) == 1
+    assert warnings[0]["row"] == 4  # header=1, S01=2, S02=3, NS=4
+    assert "unsampled gap" in warnings[0]["error"]
+    assert "2-7 m" in warnings[0]["error"]
+    assert [r["sample_id"] for r in parsed] == ["S01", "S02", "S03"]
+
+def test_combined_csv_trench_blank_coords_on_first_row_still_errors():
+    # Coordinates remain mandatory on the first row of a trench.
+    csv_data = (
+        b"Hole Id,X,Y,Z,Dip,Azimuth,Total_Length,Type,Sample_ID,From,To,Grade\n"
+        b"TR1,,,,,,,TR,S01,0,1,0.5\n"
+    )
+    parsed, errors = parse_combined_csv(csv_data)
+    real_errors = [e for e in errors if e.get("type", "error") == "error"]
+    assert len(real_errors) == 1
+    assert real_errors[0]["row"] == 2
+    assert "first row of each hole/trench" in real_errors[0]["error"]
+    assert not parsed
+
 def test_combined_csv_missing_required_header_error_row_zero():
     # No coordinates at all
     csv_data = b"Hole Id,Type\nX1,TR\n"
