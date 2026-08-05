@@ -246,29 +246,48 @@ test('planned traces are dashed and separately toggleable', () => {
     aadd004({ collar_id: 'c-2', hole_id: 'AAPL001', hole_status: 'planned' }),
   ]);
 
-  assert.equal(r.group.children.length, 1);
-  assert.equal(r.group.children[0].material.isLineDashedMaterial, undefined);
+  // Each hole contributes three objects: its trace, and the collar marker's
+  // dark rim plus its coloured core.
+  assert.equal(r.group.children.length, 3);
+  const drilledLine = r.group.children.find(c => c.isLine);
+  assert.equal(drilledLine.material.isLineDashedMaterial, undefined,
+    'drilled traces are solid');
+  assert.equal(drilledLine.material.color.getHexString(), '9b6b43',
+    'drilled trace is warm ochre brown');
 
-  // A planned hole contributes four objects: the halo line, the black dashed
-  // trace, and the collar marker's dark rim plus its white core.
-  assert.equal(r.plannedGroup.children.length, 4);
-  const dashed = r.plannedGroup.children.filter(c => c.material.isLineDashedMaterial);
-  assert.equal(dashed.length, 2, 'trace and its halo are both dashed');
+  assert.equal(r.plannedGroup.children.length, 3);
+  const plannedLine = r.plannedGroup.children.find(c => c.isLine);
+  assert.equal(plannedLine.material.isLineDashedMaterial, true,
+    'planned traces are dashed');
+  assert.equal(plannedLine.material.color.getHexString(), '78b7b7',
+    'planned trace is muted teal');
 
-  const spheres = r.plannedGroup.children.filter(c => c.isMesh);
-  assert.equal(spheres.length, 2, 'collar marker is a core plus its rim');
-  // White core, never a grade colour -- see drillhole_traces.js.
-  const core = spheres.find(m => m.material.color.getHexString() === 'ffffff');
-  assert.ok(core, 'collar marker core is white');
-  const rim = spheres.find(m => m !== core);
-  assert.equal(rim.material.side, THREE.BackSide, 'rim is drawn back-faces-only');
-  // The rim must be larger, or it would not silhouette the core.
-  assert.ok(
-    rim.geometry.parameters.radius > core.geometry.parameters.radius,
-    'rim is larger than the core'
+  // Shape carries the split as well as colour: square collar for drilled,
+  // round for planned -- see drillhole_traces.js.
+  const marker = (group, hex) => group.children.find(
+    c => c.isMesh && c.material.color.getHexString() === hex
   );
-  // The rim is decoration and must not widen the camera fit.
-  assert.equal(rim.userData.excludeFromFit, true);
+  const drilledCollar = marker(r.group, 'c49a6c');
+  assert.ok(drilledCollar, 'drilled collar is sand tan');
+  assert.equal(drilledCollar.geometry.type, 'BoxGeometry', 'drilled collar is square');
+
+  const plannedCollar = marker(r.plannedGroup, '78b7b7');
+  assert.ok(plannedCollar, 'planned collar is muted teal');
+  assert.equal(plannedCollar.geometry.type, 'SphereGeometry', 'planned collar is round');
+
+  for (const [group, core] of [[r.group, drilledCollar], [r.plannedGroup, plannedCollar]]) {
+    const rim = group.children.find(c => c.isMesh && c !== core);
+    assert.equal(rim.material.side, THREE.BackSide, 'rim is drawn back-faces-only');
+    // The rim must be larger, or it would not silhouette the core.
+    core.geometry.computeBoundingSphere();
+    rim.geometry.computeBoundingSphere();
+    assert.ok(
+      rim.geometry.boundingSphere.radius > core.geometry.boundingSphere.radius,
+      'rim is larger than the core'
+    );
+    // The rim is decoration and must not widen the camera fit.
+    assert.equal(rim.userData.excludeFromFit, true);
+  }
 });
 
 test('a hole with no status defaults to drilled styling', () => {
@@ -276,7 +295,7 @@ test('a hole with no status defaults to drilled styling', () => {
   const hole = aadd004();
   delete hole.hole_status;
   r.render([hole]);
-  assert.equal(r.group.children.length, 1);
+  assert.equal(r.group.children.length, 3);
   assert.equal(r.plannedGroup.children.length, 0);
 });
 

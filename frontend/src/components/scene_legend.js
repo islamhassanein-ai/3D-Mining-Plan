@@ -23,7 +23,7 @@ const LEGEND_LAYERS = [
     // "DD" is the industry shorthand the collar CSV already uses in its
     // hole_type column, so the legend speaks the same language as the data.
     label: 'DD (Drillholes)',
-    color: '#e8c76b',
+    color: '#c49a6c',
     objects: (v) => [
       v.tracesRenderer && v.tracesRenderer.group,
       v.assaysRenderer && v.assaysRenderer.group,
@@ -32,11 +32,12 @@ const LEGEND_LAYERS = [
   },
   {
     key: 'planned',
-    // White collar marker over a black dashed trace -- see drillhole_traces.js
-    // for why the marker is not red.
+    // Round teal collar over a dashed teal trace -- see drillhole_traces.js
+    // for why shape, not just colour, carries the drilled/planned split.
     label: 'Planned Holes',
-    color: '#ffffff',
+    color: '#78b7b7',
     dashed: true,
+    round: true,
     objects: (v) => [
       v.tracesRenderer && v.tracesRenderer.plannedGroup,
       v.assaysRenderer && v.assaysRenderer.plannedGroup,
@@ -130,9 +131,12 @@ export class SceneLegend {
         ? 'Surface (derived)' : l.label;
       // A dashed key for planned holes so the legend swatch matches the
       // line style actually drawn in the scene.
-      const key = l.dashed
+      // Round for planned, square for everything else, mirroring the collar
+      // marker shapes -- so the swatch is readable without relying on colour.
+      const key = (l.dashed
         ? `background: repeating-linear-gradient(90deg, ${l.color} 0 4px, transparent 4px 7px);`
-        : `background: ${l.color};`;
+        : `background: ${l.color};`)
+        + (l.round ? ' border-radius: 50%;' : '');
       return `
         <div class="sl-row ${on ? '' : 'sl-off'}" data-legend="${l.key}"
              role="switch" aria-checked="${on}" tabindex="0">

@@ -338,6 +338,7 @@ async function initStaticViewer() {
     if (sliderContainer) {
       new CutoffSlider(sliderContainer, (val) => {
         assaysRenderer.setGradeCutoff(val);
+        trenchesRenderer.setGradeCutoff(val);
         if (gradeHistogram) gradeHistogram.setCutoff(val);
       });
     }

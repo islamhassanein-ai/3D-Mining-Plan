@@ -44,18 +44,24 @@ function orderTrenchPoints(points) {
 }
 
 function newAcc() {
-  return { positions: [], indices: [] };
+  return { positions: [], indices: [], grades: [] };
 }
 
 // Appends a vertical ribbon quad standing on the ground between p0 and p1,
 // extruded straight up by `height`. Two triangles, no caps needed since
 // it's an open (double-sided) surface rather than a closed volume.
-function appendRibbonSegment(acc, p0, p1, height) {
+//
+// `grade` is stamped on all four vertices so the GPU cutoff can discard the
+// segment; an unsampled segment carries 0, matching Number(null) in the
+// drillhole tube builder, so both drop out at any cutoff above zero.
+function appendRibbonSegment(acc, p0, p1, height, grade) {
   const base = acc.positions.length / 3;
   acc.positions.push(p0.x, p0.y, p0.z);
   acc.positions.push(p0.x, p0.y + height, p0.z);
   acc.positions.push(p1.x, p1.y, p1.z);
   acc.positions.push(p1.x, p1.y + height, p1.z);
+  const g = Number(grade);
+  acc.grades.push(g, g, g, g);
   acc.indices.push(base, base + 2, base + 1);
   acc.indices.push(base + 1, base + 2, base + 3);
 }
@@ -66,6 +72,56 @@ export class TrenchesRenderer {
     this.group = new THREE.Group();
     this.group.name = 'trench-fences';
     this.scene.add(this.group);
+
+    // The grade cutoff applies to trench channel samples exactly as it does to
+    // drillhole assays -- a cutoff that silently spared TR fences made the
+    // scene read as though the trenches were all above it.
+    this.currentCutoff = 0.0;
+    this.materials = [];
+  }
+
+  // Same trick as the assay tubes: per-vertex grade compared against one
+  // uniform in the fragment shader, so moving the slider costs a uniform
+  // write rather than a geometry rebuild.
+  _buildMaterial(color) {
+    const material = new THREE.MeshStandardMaterial({
+      color,
+      roughness: 0.6,
+      metalness: 0.05,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.92
+    });
+
+    material.onBeforeCompile = (shader) => {
+      shader.uniforms.uCutoff = { value: this.currentCutoff };
+
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>',
+                 'attribute float aGrade;\nvarying float vGrade;\n#include <common>')
+        .replace('#include <begin_vertex>',
+                 '#include <begin_vertex>\nvGrade = aGrade;');
+
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>',
+                 'uniform float uCutoff;\nvarying float vGrade;\n#include <common>')
+        .replace('#include <clipping_planes_fragment>',
+                 '#include <clipping_planes_fragment>\nif (vGrade < uCutoff) discard;');
+
+      material.userData.shader = shader;
+    };
+    material.customProgramCacheKey = () => 'trench-fence';
+
+    return material;
+  }
+
+  setGradeCutoff(cutoffValue) {
+    this.currentCutoff = Number(cutoffValue);
+    for (const material of this.materials) {
+      if (material.userData.shader) {
+        material.userData.shader.uniforms.uCutoff.value = this.currentCutoff;
+      }
+    }
   }
 
   // Trenches are shallow surface channel samples, not round drill core --
@@ -138,7 +194,11 @@ export class TrenchesRenderer {
         const height = bucketIdx === UNSAMPLED_BUCKET_INDEX
           ? TRENCH_UNSAMPLED_HEIGHT
           : TRENCH_HEIGHT_BY_BUCKET[bucketIdx];
-        appendRibbonSegment(accsByBucket[slot], p0, p1, height);
+        // An unsampled segment has no result to compare against the cutoff,
+        // so it goes in at 0 -- the same value an unsampled drillhole interval
+        // carries -- rather than whatever placeholder grade came with it.
+        const cutoffGrade = bucketIdx === UNSAMPLED_BUCKET_INDEX ? 0 : Number(grade);
+        appendRibbonSegment(accsByBucket[slot], p0, p1, height, cutoffGrade);
       }
     }
 
@@ -149,17 +209,14 @@ export class TrenchesRenderer {
 
       const geometry = new THREE.BufferGeometry();
       geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(acc.positions), 3));
+      geometry.setAttribute('aGrade', new THREE.BufferAttribute(new Float32Array(acc.grades), 1));
       geometry.setIndex(acc.indices);
       geometry.computeVertexNormals();
 
-      const material = new THREE.MeshStandardMaterial({
-        color: isUnsampledSlot ? UNSAMPLED_COLOR : GRADE_BUCKETS[b].color,
-        roughness: 0.6,
-        metalness: 0.05,
-        side: THREE.DoubleSide,
-        transparent: true,
-        opacity: 0.92
-      });
+      const material = this._buildMaterial(
+        isUnsampledSlot ? UNSAMPLED_COLOR : GRADE_BUCKETS[b].color
+      );
+      this.materials.push(material);
 
       const mesh = new THREE.Mesh(geometry, material);
       mesh.userData = {
@@ -180,5 +237,8 @@ export class TrenchesRenderer {
     while (this.group.children.length > 0) {
       this.group.remove(this.group.children[0]);
     }
+    // Disposed above with their meshes; drop the cutoff's handles on them so
+    // setGradeCutoff doesn't keep writing uniforms into dead materials.
+    this.materials = [];
   }
 }

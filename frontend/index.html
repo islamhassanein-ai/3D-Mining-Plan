@@ -608,6 +608,7 @@
         gradeHistogram.setData(data.drillholes);
         const cutoff = new window.CutoffSlider(sliderContainer, (val) => {
           viewport3D.assaysRenderer.setGradeCutoff(val);
+          viewport3D.trenchesRenderer.setGradeCutoff(val);
           gradeHistogram.setCutoff(val);
         });
         
@@ -1094,6 +1095,7 @@
         gradeHistogram.setData(data.drillholes);
         const cutoff = new window.CutoffSlider(sliderContainer, (val) => {
           viewport3D.assaysRenderer.setGradeCutoff(val);
+          viewport3D.trenchesRenderer.setGradeCutoff(val);
           gradeHistogram.setCutoff(val);
         });
         

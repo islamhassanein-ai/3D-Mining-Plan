@@ -257,7 +257,7 @@ export class CutoffSlider {
                  min="${this.min}" max="${this.max}" step="0.05" value="${this.value.toFixed(2)}">
         </div>
         <div class="cutoff-scale">${this.renderTicks()}</div>
-        <p class="cutoff-note">Samples below the cutoff are hidden in the 3D view. Track colours mark where each grade bucket falls.</p>
+        <p class="cutoff-note">Drillhole (DD) and trench (TR) samples below the cutoff are hidden in the 3D view. Track colours mark where each grade bucket falls.</p>
       </div>
     `;
 

@@ -16,7 +16,7 @@ import { planeNormal, holeDirection, toVec } from '../services/depth_planner.js'
 // happens.
 
 const ZONE_COLOR = 0xdc2626;      // the red zone slab
-const PLANNED_COLOR = 0x67e8f9;   // matches the planned-borehole layer
+const PLANNED_COLOR = 0x78b7b7;   // matches the planned-borehole layer
 const MARKER_COLOR = 0xf97316;    // depth call-outs
 const ENVELOPE_COLOR = 0xfbbf24;  // uncertainty sleeve
 

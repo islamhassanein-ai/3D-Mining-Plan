@@ -13,11 +13,11 @@ export class LayerTogglePanel {
     this.onChange = options.onChange || null;
 
     this.layers = [
-      { key: 'traces', label: 'Drillhole Traces', color: '#9ca3af', get: () => viewport.tracesRenderer && viewport.tracesRenderer.group },
+      { key: 'traces', label: 'Drillhole Traces', color: '#9b6b43', get: () => viewport.tracesRenderer && viewport.tracesRenderer.group },
       { key: 'assays', label: 'Assay Intervals', color: '#ec4899', get: () => viewport.assaysRenderer && viewport.assaysRenderer.mesh },
       // Planned holes are their own layer: both the dashed trace group and
       // the translucent target-interval mesh follow this one switch.
-      { key: 'planned', label: 'Planned Boreholes', color: '#67e8f9', get: () => [
+      { key: 'planned', label: 'Planned Boreholes', color: '#78b7b7', get: () => [
         viewport.tracesRenderer && viewport.tracesRenderer.plannedGroup,
         viewport.assaysRenderer && viewport.assaysRenderer.plannedMesh,
       ] },
