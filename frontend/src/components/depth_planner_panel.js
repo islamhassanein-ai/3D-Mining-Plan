@@ -43,6 +43,7 @@ export class DepthPlannerPanel {
 
     this.trenches = this.groupTrenches(this.data.trenches || []);
     this.readings = (this.data.structural_readings || []).filter(r => isNum(r.dip) && isNum(r.strike));
+    this.holes = this.sortHoles(this.data.drillholes || []);
 
     this.render();
     this.bindEvents();
@@ -64,6 +65,17 @@ export class DepthPlannerPanel {
     return byId;
   }
 
+  /** Usable collars, planned before drilled, each group alphabetical. */
+  sortHoles(rows) {
+    return rows
+      .filter(h => h.hole_id && isNum(h.easting) && isNum(h.northing) && isNum(h.elevation))
+      .slice()
+      .sort((a, b) => {
+        const rank = (h) => (h.hole_status === 'planned' ? 0 : 1);
+        return rank(a) - rank(b) || String(a.hole_id).localeCompare(String(b.hole_id));
+      });
+  }
+
   render() {
     const trenchOptions = [...this.trenches.keys()]
       .map(id => `<option value="${id}">${id}</option>`).join('');
@@ -72,6 +84,13 @@ export class DepthPlannerPanel {
       const dd = dipDirectionFromStrike(r.strike);
       return `<option value="${i}">${Math.round(r.strike)}/${Math.round(r.dip)} → dd ${Math.round(dd)}  (${r.reading_type})</option>`;
     }).join('');
+
+    // Planned holes first: re-planning an already-drafted hole is the common
+    // case, and a drilled hole is normally loaded to re-plan a twin or a
+    // step-out from the same pad.
+    const holeOptions = this.holes.map((h, i) =>
+      `<option value="${i}">${escapeAttr(h.hole_id)} (${h.hole_status === 'planned' ? 'planned' : 'drilled'})</option>`
+    ).join('');
 
     this.container.innerHTML = `
       <div class="modal-card dp-card">
@@ -135,6 +154,17 @@ export class DepthPlannerPanel {
           <div id="dp-mean-note" class="dp-note"></div>
 
           <div class="dp-section-title">3 &nbsp;Proposed hole</div>
+
+          <div class="dp-row dp-row-2">
+            <div>
+              <label>From existing hole</label>
+              <select id="dp-collar-hole" class="dp-input">
+                <option value="">— manual entry —</option>
+                ${holeOptions}
+              </select>
+            </div>
+            <div><label>&nbsp;</label><button class="btn-small dp-fill" id="dp-load-hole">Load collar</button></div>
+          </div>
 
           <div class="dp-row dp-row-3">
             <div><label>Collar E</label><input type="number" step="any" id="dp-collar-e" class="dp-input"></div>
@@ -268,15 +298,20 @@ export class DepthPlannerPanel {
       for (const opt of select.options) opt.selected = ranked.includes(Number(opt.value));
       this.loadReadings();
     }
-    // Collar defaults to an existing planned hole if the project has one --
-    // that is usually exactly the hole being sized.
-    const holes = this.data.drillholes || [];
-    const seed = holes.find(h => h.hole_status === 'planned') || holes[0];
-    if (seed) {
-      this.container.querySelector('#dp-collar-e').value = seed.easting;
-      this.container.querySelector('#dp-collar-n').value = seed.northing;
-      this.container.querySelector('#dp-collar-z').value = seed.elevation;
-      this.container.querySelector('#dp-holeid').value = seed.hole_status === 'planned' ? seed.hole_id : '';
+    // Collar defaults to the first hole in the sorted list -- planned holes
+    // sort first, and a planned hole is usually exactly the one being sized.
+    // Selecting it in the dropdown rather than only writing the numbers means
+    // the choice is visible and re-selectable, and the azimuth/dip come across
+    // with it.
+    if (this.holes.length) {
+      this.container.querySelector('#dp-collar-hole').value = '0';
+      this.loadHole();
+      if (this.holes[0].hole_status !== 'planned') {
+        // A drilled hole is a location to plan *from*, not a hole ID to reuse
+        // -- leaving its name in the field would label the proposal as an
+        // existing hole.
+        this.container.querySelector('#dp-holeid').value = '';
+      }
     }
     this.recompute();
   }
@@ -291,6 +326,8 @@ export class DepthPlannerPanel {
     q('#dp-copy').onclick = () => this.copyReport();
     q('#dp-clear-observed').onclick = () => { q('#dp-observed').value = ''; this.recompute(); };
 
+    q('#dp-load-hole').onclick = () => { this.loadHole(); this.recompute(); };
+    q('#dp-collar-hole').onchange = () => { this.loadHole(); this.recompute(); };
     q('#dp-trench').onchange = () => { this.loadTrench(); this.recompute(); };
     q('#dp-convention').onchange = () => { this.loadReadings(); this.recompute(); };
 
@@ -355,6 +392,42 @@ export class DepthPlannerPanel {
       q('#dp-base-e').value = round(base.easting, 3);
       q('#dp-base-n').value = round(base.northing, 3);
       q('#dp-base-z').value = round(base.elevation, 3);
+    }
+  }
+
+  /**
+   * Fill the proposed-hole fields from an existing collar in the project.
+   *
+   * Orientation comes from the desurveyed trace rather than from a survey
+   * table the scene payload doesn't carry: the first trace point holds the
+   * azimuth and dip the hole actually starts at. A planned hole therefore
+   * loads back exactly as it was drafted, and a drilled hole loads as it was
+   * collared -- both are then free to be edited, which is the whole point of
+   * the tool.
+   *
+   * The loaded values are a starting point, not a lock: nothing here is made
+   * read-only, and editing a field does not clear the dropdown.
+   */
+  loadHole() {
+    const q = (sel) => this.container.querySelector(sel);
+    const idx = q('#dp-collar-hole').value;
+    if (idx === '') return;
+    const hole = this.holes[Number(idx)];
+    if (!hole) return;
+
+    q('#dp-collar-e').value = round(hole.easting, 3);
+    q('#dp-collar-n').value = round(hole.northing, 3);
+    q('#dp-collar-z').value = round(hole.elevation, 3);
+    q('#dp-holeid').value = hole.hole_id;
+
+    const start = Array.isArray(hole.trace) && hole.trace.length ? hole.trace[0] : null;
+    if (start && isNum(start.azimuth)) {
+      q('#dp-azimuth').value = round(start.azimuth, 1);
+    }
+    if (start && isNum(start.dip)) {
+      // The trace stores dip below horizontal as negative; this field asks for
+      // the magnitude and signedDip() re-applies the sign at compute time.
+      q('#dp-holedip').value = round(Math.abs(start.dip), 1);
     }
   }
 
@@ -654,6 +727,12 @@ function distanceTo(reading, anchor) {
   const dn = Number(reading.northing) - anchor.northing;
   const dz = Number(reading.elevation) - (Number.isFinite(anchor.elevation) ? anchor.elevation : Number(reading.elevation));
   return Math.sqrt(de * de + dn * dn + dz * dz);
+}
+
+function escapeAttr(s) {
+  return String(s).replace(/[&<>"']/g, c => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+  ));
 }
 
 function round(v, dp) {
