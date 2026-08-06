@@ -24,8 +24,14 @@ export class LayerTogglePanel {
       { key: 'lithology', label: 'Lithology', color: '#fef08a', get: () => viewport.lithologiesRenderer && viewport.lithologiesRenderer.mesh },
       { key: 'topography', label: 'Topography', color: '#3b82f6', get: () => viewport.topographyRenderer && viewport.topographyRenderer.group },
       { key: 'trenches', label: 'Trenches', color: '#ef4444', get: () => viewport.trenchesRenderer && viewport.trenchesRenderer.group },
-      { key: 'wireframes', label: 'Vein Wireframes', color: '#ec4899', get: () => viewport.wireframesRenderer && viewport.wireframesRenderer.group },
-      { key: 'structural', label: 'Structural Readings', color: '#eab308', get: () => viewport.structuralReadingsRenderer && viewport.structuralReadingsRenderer.group },
+      // Wireframes and structural readings start hidden. Both are
+      // interpretation rather than measurement, and both sit *through* the
+      // drilling rather than beside it -- a solid vein shell hides the assay
+      // intervals that justify it, and a field of dip discs speckles the
+      // surface. The geologist turns them on when reading structure, which is
+      // a deliberate act, not the default question asked of the scene.
+      { key: 'wireframes', label: 'Vein Wireframes', color: '#ec4899', get: () => viewport.wireframesRenderer && viewport.wireframesRenderer.group, defaultOff: true },
+      { key: 'structural', label: 'Structural Readings', color: '#eab308', get: () => viewport.structuralReadingsRenderer && viewport.structuralReadingsRenderer.group, defaultOff: true },
       // The Depth Planner's zone slab, proposed hole and depth call-outs. Empty
       // until the planner is opened, so the toggle is harmless before then.
       { key: 'depthPlan', label: 'Depth Plan', color: '#f97316', get: () => viewport.depthPlanRenderer && viewport.depthPlanRenderer.group },
