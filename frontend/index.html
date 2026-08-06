@@ -170,6 +170,14 @@
             <button id="reset-camera-btn">&#8635; Reset Camera</button>
           </div>
 
+          <!-- Saved camera views. The presets cover standard orientations;
+               this covers the oblique angle a given deposit is actually read
+               from. Starred view becomes the project's opening framing. -->
+          <div class="control-card">
+            <span class="control-label">Saved Views</span>
+            <div id="view-bookmarks-container"></div>
+          </div>
+
           <!-- 3D Ruler -->
           <div class="control-card">
             <div class="row-spread">
@@ -291,7 +299,7 @@
     </div>
   </div>
 
-  <script src="dist/bundle.js?v=19"></script>
+  <script src="dist/bundle.js?v=20"></script>
   <script>
     // Initialize application logic
     const API_BASE = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') ? 'http://localhost:8000' : '';
@@ -302,7 +310,8 @@
     let sectionPanel = null;
     let projectSwitcher = null;
     let depthPlanner = null;
-    
+    let viewBookmarks = null;
+
     window.addEventListener('DOMContentLoaded', async () => {
       // Check for share token in URL first
       const urlParams = new URLSearchParams(window.location.search);
@@ -582,6 +591,11 @@
           btn.onclick = () => viewport3D.controls.setPreset(btn.dataset.preset);
         });
         document.getElementById('reset-camera-btn').onclick = () => toolbar.resetCamera();
+
+        // Saved views. Built after the loader has framed the data, then given
+        // the chance to override that framing with the starred startup view.
+        viewBookmarks = new window.ViewBookmarks('view-bookmarks-container', viewport3D, projectId);
+        viewBookmarks.applyStartup();
 
         // Wire Go-to-Coordinate + Coordinate System controls
         setupGotoCoordinate(viewport3D, data);
@@ -928,6 +942,9 @@
       plannerHost.classList.remove('open');
       plannerHost.innerHTML = '';
       depthPlanner = null;
+      // Saved views are per project; the list must not carry over.
+      document.getElementById('view-bookmarks-container').innerHTML = '';
+      viewBookmarks = null;
     }
 
     function showLoginModal() {

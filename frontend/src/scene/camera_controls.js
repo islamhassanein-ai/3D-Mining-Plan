@@ -70,6 +70,30 @@ export class DampedCameraControls {
     return true;
   }
 
+  // Plain-array snapshot of where the camera is and what it is looking at.
+  // Arrays rather than Vector3 so a pose can go straight into localStorage
+  // and come back as a saved view.
+  getPose() {
+    return {
+      target: this.target.toArray(),
+      position: this.camera.position.toArray(),
+    };
+  }
+
+  // Restores a pose from getPose(). Returns false on anything malformed, so a
+  // corrupted bookmark degrades to "nothing happened" rather than throwing the
+  // camera to NaN and blanking the viewport.
+  applyPose(pose) {
+    if (!pose || !Array.isArray(pose.target) || !Array.isArray(pose.position)) return false;
+    if (pose.target.length !== 3 || pose.position.length !== 3) return false;
+    if (![...pose.target, ...pose.position].every(Number.isFinite)) return false;
+    this.target.fromArray(pose.target);
+    this.camera.position.fromArray(pose.position);
+    this.updateSphericalFromCamera();
+    this.update();
+    return true;
+  }
+
   updateSphericalFromCamera() {
     const offset = new THREE.Vector3().copy(this.camera.position).sub(this.target);
     this.spherical.setFromVector3(offset);
