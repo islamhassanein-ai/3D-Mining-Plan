@@ -164,3 +164,120 @@ def test_structural_reading_bulk_import():
     assert len(list_data) == 2
     assert list_data[0]["reading_type"] == "dip_strike"
     assert list_data[1]["reading_type"] == "fault_trace"
+
+
+def _project_with_token(email, name):
+    db = TestingSessionLocal()
+    user = User(id=uuid.uuid4(), email=email, role="owner")
+    proj = Project(id=uuid.uuid4(), name=name, owner_id=user.id, utm_zone="36N")
+    db.add(user)
+    db.add(proj)
+    db.commit()
+    token = create_access_token(data={"sub": user.email, "role": user.role, "user_id": str(user.id)})
+    proj_id = proj.id
+    db.close()
+    return proj_id, {"Authorization": f"Bearer {token}"}
+
+
+CSV_TWO_ROWS = (
+    b"reading_type,easting,northing,elevation,dip,strike\n"
+    b"dip_strike,350000,2800000,105,30,120\n"
+    b"fault_trace,350100,2800100,110,60,240"
+)
+
+
+def test_delete_single_structural_reading():
+    proj_id, headers = _project_with_token("struct_del@example.com", "Struct Delete")
+
+    created = client.post(
+        f"/projects/{proj_id}/structural",
+        json={"reading_type": "fault_trace", "easting": 1.0, "northing": 2.0,
+              "elevation": 3.0, "dip": 45.0, "strike": 180.0},
+        headers=headers
+    ).json()
+
+    res = client.delete(f"/projects/{proj_id}/structural/{created['id']}", headers=headers)
+    assert res.status_code == 204, res.text
+
+    # Gone from the read path that feeds the scene and the planner.
+    assert client.get(f"/projects/{proj_id}/structural", headers=headers).json() == []
+
+    # Deleting it again is a 404, not a second silent success.
+    assert client.delete(f"/projects/{proj_id}/structural/{created['id']}", headers=headers).status_code == 404
+    # A non-UUID id is a miss, not a 500.
+    assert client.delete(f"/projects/{proj_id}/structural/not-a-uuid", headers=headers).status_code == 404
+
+
+def test_delete_all_structural_readings():
+    proj_id, headers = _project_with_token("struct_delall@example.com", "Struct Delete All")
+
+    client.post(
+        f"/projects/{proj_id}/structural/import",
+        files={"file": ("readings.csv", io.BytesIO(CSV_TWO_ROWS), "text/csv")},
+        headers=headers
+    )
+    res = client.delete(f"/projects/{proj_id}/structural", headers=headers)
+    assert res.status_code == 200, res.text
+    assert res.json()["count"] == 2
+    assert client.get(f"/projects/{proj_id}/structural", headers=headers).json() == []
+
+
+def test_import_replace_mode_supersedes_instead_of_duplicating():
+    """The duplicate-on-re-import case: a corrected CSV must not stack."""
+    proj_id, headers = _project_with_token("struct_replace@example.com", "Struct Replace")
+
+    client.post(
+        f"/projects/{proj_id}/structural/import",
+        files={"file": ("readings.csv", io.BytesIO(CSV_TWO_ROWS), "text/csv")},
+        headers=headers
+    )
+
+    # Default (append) stacks -- this is the behaviour replace mode exists to avoid.
+    client.post(
+        f"/projects/{proj_id}/structural/import",
+        files={"file": ("readings.csv", io.BytesIO(CSV_TWO_ROWS), "text/csv")},
+        headers=headers
+    )
+    assert len(client.get(f"/projects/{proj_id}/structural", headers=headers).json()) == 4
+
+    corrected = (
+        b"reading_type,easting,northing,elevation,dip,strike\n"
+        b"dip_strike,350000,2800000,105,35,125"
+    )
+    res = client.post(
+        f"/projects/{proj_id}/structural/import?mode=replace",
+        files={"file": ("corrected.csv", io.BytesIO(corrected), "text/csv")},
+        headers=headers
+    )
+    assert res.status_code == 201, res.text
+    assert res.json()["count"] == 1
+    assert res.json()["replaced"] == 4
+
+    remaining = client.get(f"/projects/{proj_id}/structural", headers=headers).json()
+    assert len(remaining) == 1
+    assert remaining[0]["dip"] == 35.0
+
+
+def test_import_replace_mode_refuses_to_wipe_on_an_empty_csv():
+    proj_id, headers = _project_with_token("struct_empty@example.com", "Struct Empty")
+
+    client.post(
+        f"/projects/{proj_id}/structural/import",
+        files={"file": ("readings.csv", io.BytesIO(CSV_TWO_ROWS), "text/csv")},
+        headers=headers
+    )
+
+    # Header present so it parses, but every data row is unusable.
+    junk = (
+        b"reading_type,easting,northing,elevation,dip,strike\n"
+        b"dip_strike,350000,2800000,105,,\n"
+    )
+    res = client.post(
+        f"/projects/{proj_id}/structural/import?mode=replace",
+        files={"file": ("junk.csv", io.BytesIO(junk), "text/csv")},
+        headers=headers
+    )
+    assert res.status_code == 400
+    assert "left untouched" in res.text
+    # The original readings survived.
+    assert len(client.get(f"/projects/{proj_id}/structural", headers=headers).json()) == 2

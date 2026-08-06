@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, Query, status, UploadFile, File
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 from typing import List, Optional
@@ -118,15 +118,101 @@ def create_structural_reading(
         import_batch_id=str(reading.import_batch_id)
     )
 
+@router.delete("/{reading_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_structural_reading(
+    project_id: str,
+    reading_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Retires one reading.
+
+    This is a soft delete: the row is marked superseded rather than removed, so
+    the import batch that produced it still explains what was loaded and when.
+    Every read path already filters `superseded_by IS NULL`, so a retired
+    reading leaves the scene and the planner immediately.
+
+    superseded_by is a self-FK and needs a target row. A reading that is
+    retired outright has no replacement, so it points at itself -- the
+    "superseded" test is `IS NOT NULL`, which a self-reference satisfies, and
+    the history walker stops on a record whose successor is itself.
+    """
+    project = get_owned_project_or_404(project_id, db, current_user)
+
+    try:
+        reading_uuid = uuid.UUID(reading_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Structural reading not found")
+
+    reading = db.query(StructuralReading).filter(
+        StructuralReading.id == reading_uuid,
+        StructuralReading.project_id == project.id,
+        StructuralReading.superseded_by.is_(None)
+    ).first()
+
+    if not reading:
+        raise HTTPException(status_code=404, detail="Structural reading not found")
+
+    reading.superseded_by = reading.id
+    db.add(reading)
+    db.commit()
+    return None
+
+
+@router.delete("", status_code=status.HTTP_200_OK)
+def delete_all_structural_readings(
+    project_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Retires every active reading in the project.
+
+    The escape hatch for a project that has accumulated duplicates from
+    repeated CSV imports: clear the slate, then import the corrected file once.
+    """
+    project = get_owned_project_or_404(project_id, db, current_user)
+    count = _supersede_active_readings(db, project.id)
+    db.commit()
+    return {"message": f"Removed {count} structural readings", "count": count}
+
+
+def _supersede_active_readings(db, project_id, replacement_id=None):
+    """Marks all active readings in the project superseded. Returns the count.
+
+    `replacement_id` records what replaced them (a replace-mode import points
+    the old rows at the first new one, preserving the lineage the history panel
+    walks). With no replacement, each row points at itself -- see
+    delete_structural_reading for why.
+
+    Uses per-row assignment rather than a bulk Query.update() because the
+    self-referencing case needs each row's own id.
+    """
+    active = db.query(StructuralReading).filter(
+        StructuralReading.project_id == project_id,
+        StructuralReading.superseded_by.is_(None)
+    ).all()
+    for row in active:
+        row.superseded_by = replacement_id if replacement_id is not None else row.id
+        db.add(row)
+    return len(active)
+
+
 @router.post("/import", status_code=status.HTTP_201_CREATED)
 async def import_structural_readings(
     project_id: str,
     file: UploadFile = File(...),
+    mode: str = Query(
+        "append",
+        pattern="^(append|replace)$",
+        description="'append' adds to the existing readings; 'replace' retires "
+                    "every current reading first, so a corrected CSV does not "
+                    "leave the old rows behind as duplicates."
+    ),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     project = get_owned_project_or_404(project_id, db, current_user)
-    
+
     content = await file.read()
     text = content.decode("utf-8")
     
@@ -150,8 +236,19 @@ async def import_structural_readings(
         created_by=current_user.id
     )
     db.add(batch)
-    
+
+    # Replace mode: snapshot the rows to retire BEFORE inserting the new ones.
+    # The "active" filter would otherwise also match the rows this import is
+    # about to add, and the import would supersede its own output.
+    old_rows = []
+    if mode == "replace":
+        old_rows = db.query(StructuralReading).filter(
+            StructuralReading.project_id == project.id,
+            StructuralReading.superseded_by.is_(None)
+        ).all()
+
     count = 0
+    first_new_id = None
     for row in reader:
         try:
             reading_type = row["reading_type"].strip()
@@ -183,9 +280,36 @@ async def import_structural_readings(
                 import_batch_id=batch.id
             )
             db.add(reading)
+            if first_new_id is None:
+                first_new_id = reading.id
             count += 1
         except ValueError:
             continue
-            
+
+    replaced = 0
+    if mode == "replace":
+        if count == 0:
+            # Every row was rejected. Retiring the existing readings here would
+            # leave the project with no structural data at all off the back of
+            # a file that turned out to be unusable -- refuse instead.
+            db.rollback()
+            raise HTTPException(
+                status_code=400,
+                detail="No valid readings in the CSV, so nothing was replaced. "
+                       "The existing readings were left untouched."
+            )
+        # Flush first so the new rows exist and the superseded_by FK on the old
+        # rows has something to point at.
+        db.flush()
+        for old in old_rows:
+            old.superseded_by = first_new_id
+            db.add(old)
+        replaced = len(old_rows)
+
     db.commit()
-    return {"message": f"Successfully imported {count} structural readings", "count": count}
+
+    if mode == "replace":
+        message = f"Imported {count} structural readings, replacing {replaced}"
+    else:
+        message = f"Successfully imported {count} structural readings"
+    return {"message": message, "count": count, "replaced": replaced}

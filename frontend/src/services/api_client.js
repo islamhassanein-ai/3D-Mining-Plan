@@ -271,15 +271,41 @@ export const ApiClient = {
     return res.json();
   },
 
-  async importStructuralCsv(projectId, file) {
+  async deleteStructuralReading(projectId, readingId) {
+    const res = await fetch(`${API_BASE_URL}/projects/${projectId}/structural/${readingId}`, {
+      method: 'DELETE',
+      headers: getHeaders()
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Delete failed' }));
+      throw new Error(err.detail || 'Delete failed');
+    }
+  },
+
+  async deleteAllStructuralReadings(projectId) {
+    const res = await fetch(`${API_BASE_URL}/projects/${projectId}/structural`, {
+      method: 'DELETE',
+      headers: getHeaders()
+    });
+    if (!res.ok) throw new Error('Failed to remove structural readings');
+    return res.json();
+  },
+
+  // mode 'replace' retires the project's existing readings, so a corrected
+  // CSV supersedes the bad one instead of piling duplicates on top of it.
+  async importStructuralCsv(projectId, file, mode = 'append') {
     const formData = new FormData();
     formData.append('file', file);
-    const res = await fetch(`${API_BASE_URL}/projects/${projectId}/structural/import`, {
+    const res = await fetch(
+      `${API_BASE_URL}/projects/${projectId}/structural/import?mode=${encodeURIComponent(mode)}`, {
       method: 'POST',
       headers: getHeaders(),
       body: formData
     });
-    if (!res.ok) throw new Error('Import failed');
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Import failed' }));
+      throw new Error(err.detail || 'Import failed');
+    }
     return res.json();
   },
 
