@@ -28,7 +28,8 @@ recorded in this document is an Adel decision.
 |---|---|
 | Collars | 23 DD (12 drilled, 11 planned), **0 RC** |
 | Assays | 250 assayed intervals, unit `g/t`, 1 unassayed |
-| Trenches | 424 rows across 12 lines, all typed `TR` |
+| Trenches | 424 rows across 12 lines: **6 AAF lines = Face Channel (236 rows)**, **6 AAT lines = Trench (188 rows)**. All currently stored as `TR` — see [T011](tasks/T011_adel_face_channel_classification.md) |
+| Trench sample XYZ | the sample interval **midpoint**, accurate and authoritative |
 | Trench chainage | present on **all 424** rows |
 | Trench sample lengths | 406 × 1.0 m, 18 × 2.0 m |
 | Missing elevations | none |
@@ -132,9 +133,42 @@ populates, so it is a small addition if wanted.
 venv/Scripts/python.exe -m backend.analyze_sample_types "Adel"
 ```
 
-| Project | DDH n | TR n | DDH lw mean | TR lw mean | **grade ratio** |
-|---|---|---|---|---|---|
-| **Adel** (real) | 247 | 424 | 0.167 | 2.386 | **14.32** |
+**Confirmed from Adel field data, 2026-08-08:** trench sample XYZ is the sample
+**midpoint**; **`AAF` lines are Face Channel (FC)** and **`AAT` lines are Trench
+(TR)**.
+
+That last confirmation splits what had been one surface population into two, and
+they are not alike:
+
+| Population | n | lw mean | median | p75 | max | cv |
+|---|---|---|---|---|---|---|
+| **DDH** (23 DD collars) | 247 | 0.167 | 0.020 | 0.030 | 6.98 | 4.65 |
+| **FC** (6 AAF lines) | 236 | **3.908** | 0.720 | 5.985 | 49.46 | 1.66 |
+| **TR** (6 AAT lines) | 188 | **0.527** | 0.050 | 0.185 | 16.68 | 3.34 |
+
+| Comparison | length-weighted grade ratio |
+|---|---|
+| FC vs DDH | **23.46** |
+| TR vs DDH | **3.16** |
+| **FC vs TR** | **7.42** |
+| *(FC + TR pooled) vs DDH — the old figure* | *14.32* |
+
+**The 14.32 was an artefact of pooling two unlike populations.** Face channels
+read 7.4× the trench floors. Any single "trench weight" would be applying one
+number to populations that differ from each other by more than most deposits
+differ from barren rock.
+
+Geologically this is what one would expect — a face channel is cut on an exposed
+mineralised face, a trench floor cross-cuts whatever it crosses — but it means
+**Q1 is at least two decisions, not one**: FC influence and TR influence are
+separate questions. FC is the population most likely to warrant geometry-only
+treatment.
+
+**The split above is not yet in the data.** All 424 Adel trench rows carry
+`hole_type = 'TR'`, AAF lines included, so the figures above were produced by
+relabelling in memory for analysis only. Correcting this is
+[T011](tasks/T011_adel_face_channel_classification.md); nothing has been
+changed.
 
 **Withdrawn:** an earlier version of this table also listed Abo Elmagd Hill
 (0.73) and Abo Elmajd (1.26), and argued from the spread between them that no
@@ -364,7 +398,7 @@ every run so the pooling stays visible in output.
 | D2 | IDW now, replaceable | T005 | **Decided** |
 | D3 | Not a resource estimate | all | **Decided** |
 | D4 | Implementer boundary | all | **Decided** |
-| Q1 | Trench influence default | T005, T009 | **Open** |
+| Q1 | Trench influence default | T005, T009 | **Open** — and now at least two decisions (FC, TR). Blocked on [T011](tasks/T011_adel_face_channel_classification.md) |
 | Q2 | Cut-off default + sensitivity set | T003, T008, T009 | **Open** |
 | Q3 | Minimum mining width | T006 | **Open** |
 | Q4 | Structural orientation inputs | T005, T008, T009 | **Open** |
