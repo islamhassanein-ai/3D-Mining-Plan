@@ -9,6 +9,32 @@ Raised by the geologist on 2026-08-07, after T001 was specified.
 
 ---
 
+## Scope of evidence (binding — set 2026-08-08)
+
+**Adel is the only real project dataset.** Every other project in the
+application — Abo Elmagd Hill (Gold), Abo Elmajd, El Kharga, Nabil, Samir,
+Tallat, Adel Area, and the QA/sample projects — is test or mock data.
+
+Geological rules, defaults, trench weighting, sample-type behaviour, and
+modelling assumptions **must be derived from Adel only**. Statistics from any
+other project may be used to exercise code paths and nothing else.
+
+Code stays generic — nothing about Adel is hard-coded — but every *decision*
+recorded in this document is an Adel decision.
+
+**Adel's composition**, for reference:
+
+| | |
+|---|---|
+| Collars | 23 DD (12 drilled, 11 planned), **0 RC** |
+| Assays | 250 assayed intervals, unit `g/t`, 1 unassayed |
+| Trenches | 424 rows across 12 lines, all typed `TR` |
+| Trench chainage | present on **all 424** rows |
+| Trench sample lengths | 406 × 1.0 m, 18 × 2.0 m |
+| Missing elevations | none |
+
+---
+
 ## Recorded decisions (settled — implement as written)
 
 ### D1. Extrapolation — conservative, confirmed
@@ -106,17 +132,19 @@ populates, so it is a small addition if wanted.
 venv/Scripts/python.exe -m backend.analyze_sample_types "Adel"
 ```
 
-| Project | DDH n | TR/FC n | DDH lw mean | TR/FC lw mean | **grade ratio** |
+| Project | DDH n | TR n | DDH lw mean | TR lw mean | **grade ratio** |
 |---|---|---|---|---|---|
-| Adel | 247 | 424 (TR) | 0.167 | 2.386 | **14.32** |
-| Abo Elmagd Hill (Gold) | 114 | 173 (TR, assumed 1 m) | 1.094 | 0.803 | **0.73** |
-| Abo Elmajd | 60 | 21 (TR/CH/FC) | 1.172 | 1.472 | **1.26** |
+| **Adel** (real) | 247 | 424 | 0.167 | 2.386 | **14.32** |
 
-**The answer is not the same in every project, and it is not a small effect.**
-In Adel trenches read fourteen times core; in Abo Elmagd Hill they read below
-it. A single global default trench weight would be wrong in at least one of
-these projects, which settles the "keep it configurable" half of Q1
-independently of what the default becomes.
+**Withdrawn:** an earlier version of this table also listed Abo Elmagd Hill
+(0.73) and Abo Elmajd (1.26), and argued from the spread between them that no
+single default trench weight could be right. **Both of those are mock datasets**
+and carry no geological weight, so that argument is withdrawn. Keeping the
+trench influence configurable remains right as a design principle — a second
+real deposit will not behave like Adel — but it is not a finding from data.
+
+**The Adel evidence on its own:** trenches read **14× the drill population**,
+length-weighted.
 
 Adel's Q–Q shows the divergence runs across the whole distribution, not just
 the upper tail — ratios of 40, 8.5, and 69 at q0.25, q0.51, and q0.75 — while
@@ -208,25 +236,57 @@ The T004 specification said to treat trench `from_depth`/`to_depth` as chainage
 along the trench floor, composite along it, and interpolate each composite's
 position along the polyline. The real database does not support that:
 
-1. **Chainage is not unique.** AAF002 and AAF004A carry pairs of samples sharing
-   a chainage — 0–1 m holds both 5.86 and 2.82 g/t — separated by 0.15–0.49 m in
-   plan but ~1 m in **elevation**, with consecutive sample numbers. They are a
-   face sampled at two heights. Chainage is a 1-D coordinate on a 2-D face and
-   cannot tell them apart; elevation can, and it lives only in the coordinates.
-   One AAF004A pair differs by 0.06 against 7.86 g/t.
-2. **There is no stored polyline.** `trench` holds points; the polyline is only
-   those points joined in `point_order`. No surveyed centreline exists in the
-   schema, so "position along the polyline" adds nothing to the coordinates.
-3. **Chainage is often absent.** 173 assayed legacy rows have none — every
-   trench in Abo Elmagd Hill.
+### RESOLVED by the geologist, 2026-08-08
 
-**Correction to the original wording of this question:** it claimed chainage and
-polyline distance disagree, citing AAF001 at chainage 12–13 m against a polyline
-of 11.89 m. That compared a sample's *end* against a *vertex position*, and the
-stored coordinate is the sample **start**. Corrected, AAF001 agrees to 0.9%.
-Chainage is sound where it exists — ~1% agreement in surveyed data, ~10% long in
-the hand-authored demo CSVs. It is a good record of sample length; it is simply
-not a 3-D position.
+**The stored XYZ on each trench sample is accurate and authoritative, and
+represents the MIDPOINT of the sample interval.** This is a statement of
+provenance from the person who collected the data and it settles the question.
+
+T004's existing behaviour — placing each assayed trench row at its own stored
+coordinates — is therefore correct as written, and is now consistent with the
+drillhole path, which also places each composite at its midpoint.
+
+**Correcting my own analysis.** The findings document reported the coordinate as
+the sample *start*. That conclusion was weaker than it was presented:
+
+- **406 of Adel's 424 trench samples are a uniform 1.0 m**, and for uniform
+  lengths the start and midpoint hypotheses are *mathematically
+  indistinguishable* under the test used — both advance by the same step.
+- The entire "start" finding rested on **4 lines containing the 18 two-metre
+  samples**, and split 3–1 (AAT001/002/003 start, AAF003 midpoint) with margins
+  of **4–8 cm**.
+- 18 samples out of 424, at centimetre margins, is not a basis for overriding
+  the data's provenance. It was reported with more confidence than it earned.
+
+The practical difference is length/2 — 0.5 m for a 1 m sample — against a
+default 5 m interpolation cell, so nothing downstream shifts materially either
+way.
+
+### What still stands (real Adel data)
+
+1. **Chainage is not unique.** AAF002 (5 pairs) and AAF004A (3 pairs) carry
+   samples sharing a chainage — 0–1 m holds both 5.86 and 2.82 g/t — separated by
+   0.15–0.49 m in plan but ~1 m in **elevation**, with consecutive sample
+   numbers. A face sampled at two heights. Chainage is a 1-D coordinate on a 2-D
+   face; elevation separates them and lives only in the coordinates. One AAF004A
+   pair differs by 0.06 against 7.86 g/t.
+2. **There is no stored polyline.** `trench` holds points; the line is only those
+   points joined in `point_order`. No surveyed centreline exists in the schema.
+
+Both reinforce the resolution above: the coordinates are the geometry.
+
+**Also withdrawn:** the claim that chainage and polyline distance disagree
+(AAF001 at chainage 12–13 m against a polyline of 11.89 m) compared a sample's
+*end* against a *point position*. Chainage in Adel agrees with cumulative
+coordinate distance to ~1–2%. The ~10% stretch reported earlier was entirely in
+mock projects and is not a real-data finding.
+
+### No longer applicable
+
+- **Legacy rows with no chainage** — all 173 are in Abo Elmagd Hill (mock). All
+  424 Adel rows carry chainage, so the assumed-sample-length question does not
+  arise for real modelling. `trench_length_when_unspecified` stays in the code as
+  generic handling; it needs no geological default.
 
 **What T004 does instead, provisionally:** one composite per assayed trench row,
 placed at the coordinates that row states, with length from `to_depth −
@@ -234,27 +294,46 @@ from_depth` where present. Rows stating no length are **excluded and counted**
 by default; `trench_length_when_unspecified` includes them under a stated
 assumption. Nothing is interpolated and no reconciliation is invented.
 
-Needs deciding — see [T010](tasks/T010_trench_geometry_decision.md) for the full
-decision set: (a) whether row-stated coordinates become the settled rule; (b)
-whether the 173 legacy rows carry an assumed sample length, and what it should be
-— their observed ~1 m spacing supports 1.0 m, and this changes Abo Elmagd Hill's
-trench population from 0 to 173 composites, which is what produced the 0.73 ratio
-in the Q1 table; (c) whether Q5 blocks T005 at all.
+### Remaining work under T010
 
-**On (c) the evidence says no.** Anisotropic IDW consumes located point samples
-and a search ellipsoid — it never asks how two samples in a trench are
-connected, and every trench sample already has an unambiguous position. Q5 blocks
-features that reconstruct a trench *line*, not point interpolation. T005 remains
-blocked on Q1 and Q4 regardless.
+The geometry source is settled (midpoint coordinates, authoritative). What is
+left in [T010](tasks/T010_trench_geometry_decision.md) is small and mostly
+mechanical:
 
-### Q6. RC holes pooled with diamond core — **raised by T004**
+- rewrite T004's requirements 8–10 so the specification matches the code;
+- add deterministic ordering to the trench query;
+- correct the start-vs-midpoint and chainage-vs-polyline claims wherever they
+  appear;
+- record whether a `sample_length_m` column is wanted (optional, additive, not
+  needed for Adel since every row states chainage).
 
-**Documented in [`analysis/Q6_rc_vs_core.md`](analysis/Q6_rc_vs_core.md). No
-implementation change until decided; T004 is not to be modified.**
+**Q5 does not block T005.** Anisotropic IDW consumes located point samples and a
+search ellipsoid — it never asks how two samples in a trench are connected, and
+every Adel trench sample has an authoritative midpoint position. Q5 blocks
+features that reconstruct a trench *line*, not point interpolation. **T005
+remains blocked on Q1 and Q4.**
 
-The database holds 26 RC collars alongside 446 DD. Per the T004 specification
-every collar-borne composite is typed `DDH`, so **T002's "DDH vs TR/FC"
-comparison is presently Core + RC vs Trench**.
+### Q6. RC holes pooled with diamond core — **NOT APPLICABLE to Adel**
+
+**Adel contains 23 DD collars and zero RC.** All RC in the database (26 collars)
+sits in mock projects. Per the scope rule above, **the modelling workflow must
+not be designed around it**, and Q6 therefore decides nothing for the current
+implementation.
+
+Held open as a **labelling** matter only: `composite_points` types every
+collar-borne composite `DDH`, which is accurate for Adel today and would become
+inaccurate the moment a real RC dataset is imported. No implementation change;
+T004 is not to be modified.
+
+Options and costs remain documented in
+[`analysis/Q6_rc_vs_core.md`](analysis/Q6_rc_vs_core.md) for when real RC data
+arrives. The one design consequence worth remembering: `compare_sample_types`
+splits reference-vs-rest, so a bare `RC` type would land in the *non-reference*
+population and be averaged in with trenches — separating RC later means giving
+T002 explicit comparison groups.
+
+Everything below this line describes the mock data and is retained only as
+background.
 
 The four types the data distinguishes: **DD** (diamond core) and **RC** (reverse
 circulation) from `collar.hole_type`; **TR**, **CH**, **FC** from
@@ -289,8 +368,8 @@ every run so the pooling stays visible in output.
 | Q2 | Cut-off default + sensitivity set | T003, T008, T009 | **Open** |
 | Q3 | Minimum mining width | T006 | **Open** |
 | Q4 | Structural orientation inputs | T005, T008, T009 | **Open** |
-| Q5 | Trench sample placement and length | trench-line features | **Investigated** — awaiting decision, see [T010](tasks/T010_trench_geometry_decision.md) |
-| Q6 | RC pooled with diamond core | labelling; T005 later | **Documented** — awaiting decision, see [analysis](analysis/Q6_rc_vs_core.md) |
+| Q5 | Trench sample geometry | — | **Resolved 2026-08-08**: stored XYZ is the authoritative sample **midpoint**. Cleanup in [T010](tasks/T010_trench_geometry_decision.md) |
+| Q6 | RC pooled with diamond core | — | **Not applicable** — Adel has no RC. Labelling matter only |
 
 T001, T002 and T004 are implemented. Q1 now has real evidence (table above);
 Q5 and Q6 were raised by putting the real database through T004 and did not

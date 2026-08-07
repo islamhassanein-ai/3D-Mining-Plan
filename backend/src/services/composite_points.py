@@ -45,14 +45,11 @@ never a trajectory, so a trench sample stays at the elevation its row states.
 See ``combined_routing`` for why -- applying dip along a trench's length puts a
 145 m trench 40 m in the air.
 
-**Trench sample placement is provisional.** A trench sample is placed at the
-coordinates its own row carries, and trench samples are not composited along
-chainage. The task specification called for compositing trench samples along
-``from_depth``/``to_depth`` as chainage and interpolating position along the
-polyline; the real data does not support that, in three separate ways
-documented in ``build_trench_composites``. Rather than invent a reconciliation,
-this module uses the position each row states. See
-``specs/007-grade-domain-shells/OPEN_QUESTIONS.md``.
+A trench sample is placed at the coordinates its own row carries, which are
+accurate and authoritative and mark the **midpoint of the sample interval**.
+That makes trench placement consistent with the drillhole path, where each
+composite is also placed at its midpoint. Trench samples are not composited
+along chainage; ``build_trench_composites`` documents why.
 """
 import uuid as uuid_module
 from dataclasses import dataclass, field
@@ -213,10 +210,14 @@ def build_trench_composites(
     and optionally ``from_depth``/``to_depth``. Returns
     ``(composites, warnings, n_unassayed)``.
 
+    Each row's stored coordinates are authoritative and mark the **midpoint of
+    the sample interval**, so a sample needs no interpolation to be placed.
+
     **Why samples are not composited along chainage.** The specification for
     this task called for treating ``from_depth``/``to_depth`` as chainage along
     the trench floor, compositing along it, and interpolating each composite's
-    position along the polyline. The database does not support that:
+    position along the polyline. Beyond being unnecessary given authoritative
+    coordinates, the database does not support it:
 
     1. **Chainage is not unique, so it cannot position a sample.** AAF002 and
        AAF004A carry pairs of samples sharing a chainage -- 0-1 m holds both
@@ -234,15 +235,13 @@ def build_trench_composites(
        the polyline" can carry no information the coordinates do not already
        hold.
 
-    3. **Chainage is often absent.** The legacy trench uploaders record only a
-       point and a grade, leaving ``from_depth``/``to_depth`` NULL -- 173
-       assayed rows in this database, every trench in the Abo Elmagd Hill
-       project.
+    3. **Chainage is sometimes absent.** The legacy trench uploaders record only
+       a point and a grade, leaving ``from_depth``/``to_depth`` NULL.
 
-    Chainage itself is sound where it exists: in surveyed data it agrees with
-    cumulative coordinate distance to about 1%, and the stored coordinate is the
-    sample's start point. It is a good record of sample length and downline
-    position. It is simply not a position in three dimensions.
+    Chainage itself is sound where it exists -- in the real dataset it agrees
+    with cumulative coordinate distance to about 1-2% -- and it is the right
+    source for **sample length**. It is simply not a position in three
+    dimensions.
 
     What each row does state unambiguously is its own position and its own
     grade, so that is what is used: one composite per assayed row, at the

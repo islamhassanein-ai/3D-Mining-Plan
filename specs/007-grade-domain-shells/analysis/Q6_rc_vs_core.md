@@ -1,5 +1,19 @@
 # Q6 — RC versus diamond core: a modelling decision record
 
+> ## NOT APPLICABLE to the current implementation
+>
+> **Adel — the only real dataset — contains 23 DD collars and zero RC.** All 26
+> RC collars in the database sit in mock projects, and per the scope rule in
+> `OPEN_QUESTIONS.md` the modelling workflow must not be designed around them.
+>
+> This document is retained for when a real RC dataset arrives. Until then Q6 is
+> a **labelling** matter only: typing every collar-borne composite `DDH` is
+> accurate for Adel today. **No implementation change; T004 is not to be
+> modified.**
+>
+> The exposure table below is mock data and is kept only as a record of what is
+> in the database.
+
 Documentation only. **No implementation change is proposed here**, and T004 is
 not to be modified until this is decided.
 

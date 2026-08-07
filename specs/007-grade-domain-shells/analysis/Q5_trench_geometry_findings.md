@@ -1,5 +1,24 @@
 # Q5 — Trench geometry: what the database actually supports
 
+> ## SUPERSEDED IN PART — read this first
+>
+> **Resolved 2026-08-08 by the geologist: the stored XYZ is accurate and
+> authoritative, and represents the sample interval's MIDPOINT.** Finding 1
+> below concluded "start point"; that conclusion is withdrawn. Why it was weak:
+> 406 of Adel's 424 trench samples are a uniform 1.0 m, and for uniform lengths
+> the start and midpoint hypotheses are mathematically indistinguishable under
+> the test used. The finding rested entirely on the 4 lines containing the 18
+> two-metre samples, split 3–1, with margins of 4–8 cm. It was reported with
+> more confidence than it earned.
+>
+> **Scope also narrowed: Adel is the only real dataset.** Every other project
+> here is mock. Findings 2 and 5 draw on mock projects and carry no geological
+> weight — they are retained only as a record of what was examined.
+>
+> **What still stands, on real Adel data:** Findings 3 (chainage is not unique)
+> and 4 (there is no stored polyline). Both support the resolution: the
+> coordinates are the geometry.
+
 Findings only. No rule is proposed as settled, nothing was changed in the data,
 and no reconciliation between chainage and coordinates has been invented. The
 decision itself is [T010](../tasks/T010_trench_geometry_decision.md).
@@ -25,7 +44,18 @@ survives, but for entirely different reasons than originally given.
 
 ---
 
-## Finding 1 — The stored XYZ is the sample START point
+## Finding 1 — WITHDRAWN. The stored XYZ is the sample MIDPOINT
+
+*Superseded by the geologist's statement of provenance, 2026-08-08. The original
+analysis is kept below so the reasoning — and its weakness — stays on record.*
+
+**Why the test could not settle it.** It rebased each line to its first point,
+which cancels the start/midpoint offset whenever samples are uniform length.
+406 of Adel's 424 trench samples are uniform 1.0 m. Only the 4 lines containing
+the 18 two-metre samples could discriminate at all, and they split 3–1 with
+4–8 cm margins. That is not evidence against the data's provenance.
+
+### Original analysis (withdrawn)
 
 For every trench line carrying chainage, cumulative 3-D distance along
 `point_order` was fitted against three hypotheses — that the coordinate marks
@@ -142,12 +172,14 @@ bug, and it is listed in T010 as a small fix regardless of how Q5 resolves.
 
 ## Answers to the six questions
 
-**1. What does the stored XYZ represent?** The **start point of the sample**
-(Finding 1). For the paired face samples, the start of that particular channel.
+**1. What does the stored XYZ represent?** The **midpoint of the sample
+interval** — resolved by the geologist, not by this analysis. Accurate and
+authoritative.
 
 **2. How was chainage intended to relate to the polyline?** As distance from the
-trench origin along the trench. Surveyed data honours it to ~1%; the hand-built
-demo CSVs run ~10% long (Finding 2).
+trench origin along the trench. In Adel it agrees with cumulative coordinate
+distance to ~1–2%. (The ~10% stretch in Finding 2 is entirely mock data and
+carries no weight.)
 
 **3. Which is authoritative?** **The per-sample coordinates.** Not because
 chainage is wrong, but because (a) there is no stored polyline independent of
@@ -155,10 +187,10 @@ those coordinates (Finding 4), and (b) chainage is not unique — it cannot
 separate the upper and lower samples of a face, which differ by up to 18 g/t
 (Finding 3).
 
-**4. How should legacy rows be interpreted?** They give position and grade
-reliably. They give **no length and no order**. Their ~1 m spacing supports a 1 m
-assumed length but does not establish it (Finding 5). Currently T004 excludes
-them and counts them unless a length is explicitly passed.
+**4. How should legacy rows be interpreted?** **Moot for modelling** — all 173
+are in Abo Elmagd Hill, which is mock. Every one of Adel's 424 rows carries
+chainage. T004's `trench_length_when_unspecified` stays as generic handling and
+needs no geological default.
 
 **5. How should overlapping chainage be handled?** As **distinct samples**,
 which is what they are — different elevations, different sample numbers,

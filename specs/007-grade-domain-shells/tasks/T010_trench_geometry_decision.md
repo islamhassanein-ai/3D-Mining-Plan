@@ -12,7 +12,15 @@
 | **Priority** | P0 — blocks T005 |
 | **Dependencies** | T004 (done) |
 | **Complexity** | Small (documentation + two small code changes) |
-| **Status** | **AWAITING GEOLOGIST DECISION** |
+| **Status** | **Geometry RESOLVED — cleanup outstanding** |
+
+> **Resolved 2026-08-08.** The stored trench XYZ is accurate and authoritative
+> and represents the **midpoint of the sample interval**. D-A is answered:
+> per-sample coordinates are the geometry source, which is what T004 already
+> does. D-B is moot — all 424 Adel trench rows carry chainage; the 173 rows
+> without it are mock data. D-C is confirmed: **Q5 does not block T005**.
+>
+> What remains is the cleanup in "Work that follows" below, plus D-D if wanted.
 
 ---
 
@@ -108,13 +116,15 @@ Add `.order_by(Trench.trench_id, Trench.point_order, Trench.id)` and a test
 asserting two extractions of the same project return composites in the same
 order.
 
-### 2. Correct the superseded claim in the T004 docstring
+### 2. Correct the superseded claims — **DONE**
 
-`backend/src/services/composite_points.py` states that chainage and polyline
-distance disagree, citing AAF001. **That comparison was wrong** — it measured a
-sample's end against a vertex position. Corrected text belongs in the docstring;
-the conclusion (coordinates authoritative) stands, on the grounds of
-non-uniqueness and the absence of a stored polyline instead.
+Two wrong claims were corrected in `composite_points.py`, `OPEN_QUESTIONS.md`,
+the findings document, and the T004 task file:
+
+- that chainage and polyline distance disagree (it compared a sample's *end*
+  against a *point position*; Adel agrees to ~1–2%);
+- that the stored coordinate is the sample *start* (it is the **midpoint**; the
+  analysis could not distinguish the two on 96% uniform-length samples).
 
 ---
 
