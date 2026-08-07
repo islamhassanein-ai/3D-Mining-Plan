@@ -100,9 +100,36 @@ oxidation, or within some distance of a trench. That is not implemented and is
 not in any current task. `TypedComposite` already carries `x/y/z`, which T004
 populates, so it is a small addition if wanted.
 
-*Suggested resolution path: run T002 on the actual project data (needs T004 to
-supply real composites), read the ratio together with the Q–Q shape, and decide
-whether a co-located comparison is needed before setting the default.*
+### Q1 evidence from the real database (T004 landed 2026-08-07)
+
+```bash
+venv/Scripts/python.exe -m backend.analyze_sample_types "Adel"
+```
+
+| Project | DDH n | TR/FC n | DDH lw mean | TR/FC lw mean | **grade ratio** |
+|---|---|---|---|---|---|
+| Adel | 247 | 424 (TR) | 0.167 | 2.386 | **14.32** |
+| Abo Elmagd Hill (Gold) | 114 | 173 (TR, assumed 1 m) | 1.094 | 0.803 | **0.73** |
+| Abo Elmajd | 60 | 21 (TR/CH/FC) | 1.172 | 1.472 | **1.26** |
+
+**The answer is not the same in every project, and it is not a small effect.**
+In Adel trenches read fourteen times core; in Abo Elmagd Hill they read below
+it. A single global default trench weight would be wrong in at least one of
+these projects, which settles the "keep it configurable" half of Q1
+independently of what the default becomes.
+
+Adel's Q–Q shows the divergence runs across the whole distribution, not just
+the upper tail — ratios of 40, 8.5, and 69 at q0.25, q0.51, and q0.75 — while
+the DDH population there is close to barren (median 0.020 g/t, p75 0.030 g/t).
+That pattern is at least as consistent with **the two sample sets testing
+different ground** — trenches cut across outcropping veins while those twelve
+holes largely missed them — as with a sampling bias in the trenching. The
+global comparison cannot separate those, per the limitation above.
+
+*Suggested resolution path: decide per project rather than globally, and settle
+whether a co-located comparison is wanted before fixing Adel's default — a 14×
+ratio on a near-barren drill population is a question about the drilling as
+much as about the trenching.*
 
 ### Q2. Cut-off default and sensitivity set — **blocks T003, T008, T009**
 
@@ -171,6 +198,55 @@ the user was forced to think about.*
 
 ---
 
+### Q5. Trench sample placement and length — **raised by T004, blocks T005 geometry**
+
+The T004 specification said to treat trench `from_depth`/`to_depth` as chainage
+along the trench floor, composite along it, and interpolate each composite's
+position along the polyline. **The real database does not support that**, in
+three separate ways:
+
+1. **Chainage and polyline distance disagree.** AAF001's last sample is at
+   chainage 12–13 m while its polyline reaches 11.89 m; MKCH001's second sample
+   is at chainage 4.5 m and polyline distance 5.56 m. Chainage is measured along
+   the trench floor, the polyline is a chord approximation of it, and neither
+   measure is wrong — they are different things.
+2. **Chainage is not always monotonic.** AAF002 carries two samples at chainage
+   0–1 m (grades 5.86 and 2.82), two more at 1–2 m, and so on: parallel channel
+   lines sharing one `trench_id` and one chainage scale. Compositing them along
+   a shared axis raises on overlapping intervals, correctly, because they are
+   not one sequence of ground.
+3. **Chainage is often absent.** The legacy trench uploaders record only a point
+   and a grade — 178 rows in this database, including every trench in Abo Elmagd
+   Hill.
+
+**What T004 does instead, provisionally:** one composite per assayed trench row,
+placed at the coordinates that row states, with length from `to_depth −
+from_depth` where present. Rows stating no length are **excluded and counted**
+by default; `trench_length_when_unspecified` includes them under a stated
+assumption. Nothing is interpolated and no reconciliation is invented.
+
+Needs deciding: (a) whether row-stated coordinates are the right placement, or
+chainage should win where present; (b) whether the 178 legacy rows should carry
+an assumed sample length, and what it should be — note this changes Abo Elmagd
+Hill's trench population from 0 to 173 composites and is what produced the 0.73
+ratio in the Q1 table.
+
+### Q6. RC holes pooled with diamond core — **raised by T004**
+
+The database holds 26 RC collars alongside 446 DD (4 of the 11 collars in Abo
+Elmajd are RC). Per the T004 specification every collar-borne composite is typed
+`DDH`, so **RC is currently pooled with diamond core**.
+
+Reverse circulation is a different sample support from core — chip sampling,
+different recovery and contamination behaviour — so this is the same class of
+question as Q1, one level down. It is left pooled rather than split because
+splitting it would move RC into T002's *non-reference* population, where it
+would be averaged in with trenches and make the trench ratio meaningless.
+
+`ExtractionReport.collars_by_hole_type` reports the DD/RC/unspecified split on
+every run so the pooling stays visible. Needs deciding: leave pooled, or add a
+third population handled explicitly by the comparison.
+
 ## Status
 
 | # | Question | Blocks | Status |
@@ -183,7 +259,9 @@ the user was forced to think about.*
 | Q2 | Cut-off default + sensitivity set | T003, T008, T009 | **Open** |
 | Q3 | Minimum mining width | T006 | **Open** |
 | Q4 | Structural orientation inputs | T005, T008, T009 | **Open** |
+| Q5 | Trench sample placement and length | T005 geometry | **Open** — raised by T004 |
+| Q6 | RC pooled with diamond core | T002 reading, T005 | **Open** — raised by T004 |
 
-T001 and T002 are unaffected by all four open questions and are
-**implemented**. T004 is unaffected and may proceed; it is also the remaining
-prerequisite for answering Q1 against real data.
+T001, T002 and T004 are implemented. Q1 now has real evidence (table above);
+Q5 and Q6 were raised by putting the real database through T004 and did not
+exist when the specs were written.

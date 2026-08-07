@@ -9,7 +9,25 @@
 | **Priority** | P0 |
 | **Dependencies** | T001 |
 | **Complexity** | Large |
-| **Status** | TODO |
+| **Status** | **DONE — with a specification deviation** |
+
+> Implemented in `backend/src/services/composite_points.py`, with 23 unit tests
+> and 15 integration tests. `backend/analyze_sample_types.py` runs the T002
+> comparison against a real project.
+>
+> **Requirements 8–10 below were not implemented as written.** They call for
+> compositing trench samples along `from_depth`/`to_depth` as chainage and
+> interpolating position along the polyline; the real database contradicts that
+> in three ways (chainage disagrees with polyline distance, is non-monotonic
+> where parallel channels share a `trench_id`, and is absent on 178 legacy
+> rows). Each assayed trench row instead becomes one composite at the
+> coordinates it states. See **Q5** in
+> [`../OPEN_QUESTIONS.md`](../OPEN_QUESTIONS.md) — this needs a decision before
+> T005 consumes trench geometry.
+>
+> Two smaller corrections to this spec: the collar status column is
+> `hole_status`, not `status`; and `Collar` has no dip/azimuth, so a hole with
+> no survey rows is skipped rather than given a synthesised station.
 
 ---
 
