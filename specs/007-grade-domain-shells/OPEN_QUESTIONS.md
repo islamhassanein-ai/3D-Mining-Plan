@@ -200,24 +200,33 @@ the user was forced to think about.*
 
 ### Q5. Trench sample placement and length — **raised by T004, blocks T005 geometry**
 
+**Investigated 2026-08-08 — full evidence in
+[`analysis/Q5_trench_geometry_findings.md`](analysis/Q5_trench_geometry_findings.md),
+decision task [`T010`](tasks/T010_trench_geometry_decision.md).**
+
 The T004 specification said to treat trench `from_depth`/`to_depth` as chainage
 along the trench floor, composite along it, and interpolate each composite's
-position along the polyline. **The real database does not support that**, in
-three separate ways:
+position along the polyline. The real database does not support that:
 
-1. **Chainage and polyline distance disagree.** AAF001's last sample is at
-   chainage 12–13 m while its polyline reaches 11.89 m; MKCH001's second sample
-   is at chainage 4.5 m and polyline distance 5.56 m. Chainage is measured along
-   the trench floor, the polyline is a chord approximation of it, and neither
-   measure is wrong — they are different things.
-2. **Chainage is not always monotonic.** AAF002 carries two samples at chainage
-   0–1 m (grades 5.86 and 2.82), two more at 1–2 m, and so on: parallel channel
-   lines sharing one `trench_id` and one chainage scale. Compositing them along
-   a shared axis raises on overlapping intervals, correctly, because they are
-   not one sequence of ground.
-3. **Chainage is often absent.** The legacy trench uploaders record only a point
-   and a grade — 178 rows in this database, including every trench in Abo Elmagd
-   Hill.
+1. **Chainage is not unique.** AAF002 and AAF004A carry pairs of samples sharing
+   a chainage — 0–1 m holds both 5.86 and 2.82 g/t — separated by 0.15–0.49 m in
+   plan but ~1 m in **elevation**, with consecutive sample numbers. They are a
+   face sampled at two heights. Chainage is a 1-D coordinate on a 2-D face and
+   cannot tell them apart; elevation can, and it lives only in the coordinates.
+   One AAF004A pair differs by 0.06 against 7.86 g/t.
+2. **There is no stored polyline.** `trench` holds points; the polyline is only
+   those points joined in `point_order`. No surveyed centreline exists in the
+   schema, so "position along the polyline" adds nothing to the coordinates.
+3. **Chainage is often absent.** 173 assayed legacy rows have none — every
+   trench in Abo Elmagd Hill.
+
+**Correction to the original wording of this question:** it claimed chainage and
+polyline distance disagree, citing AAF001 at chainage 12–13 m against a polyline
+of 11.89 m. That compared a sample's *end* against a *vertex position*, and the
+stored coordinate is the sample **start**. Corrected, AAF001 agrees to 0.9%.
+Chainage is sound where it exists — ~1% agreement in surveyed data, ~10% long in
+the hand-authored demo CSVs. It is a good record of sample length; it is simply
+not a 3-D position.
 
 **What T004 does instead, provisionally:** one composite per assayed trench row,
 placed at the coordinates that row states, with length from `to_depth −
@@ -225,27 +234,48 @@ from_depth` where present. Rows stating no length are **excluded and counted**
 by default; `trench_length_when_unspecified` includes them under a stated
 assumption. Nothing is interpolated and no reconciliation is invented.
 
-Needs deciding: (a) whether row-stated coordinates are the right placement, or
-chainage should win where present; (b) whether the 178 legacy rows should carry
-an assumed sample length, and what it should be — note this changes Abo Elmagd
-Hill's trench population from 0 to 173 composites and is what produced the 0.73
-ratio in the Q1 table.
+Needs deciding — see [T010](tasks/T010_trench_geometry_decision.md) for the full
+decision set: (a) whether row-stated coordinates become the settled rule; (b)
+whether the 173 legacy rows carry an assumed sample length, and what it should be
+— their observed ~1 m spacing supports 1.0 m, and this changes Abo Elmagd Hill's
+trench population from 0 to 173 composites, which is what produced the 0.73 ratio
+in the Q1 table; (c) whether Q5 blocks T005 at all.
+
+**On (c) the evidence says no.** Anisotropic IDW consumes located point samples
+and a search ellipsoid — it never asks how two samples in a trench are
+connected, and every trench sample already has an unambiguous position. Q5 blocks
+features that reconstruct a trench *line*, not point interpolation. T005 remains
+blocked on Q1 and Q4 regardless.
 
 ### Q6. RC holes pooled with diamond core — **raised by T004**
 
-The database holds 26 RC collars alongside 446 DD (4 of the 11 collars in Abo
-Elmajd are RC). Per the T004 specification every collar-borne composite is typed
-`DDH`, so **RC is currently pooled with diamond core**.
+**Documented in [`analysis/Q6_rc_vs_core.md`](analysis/Q6_rc_vs_core.md). No
+implementation change until decided; T004 is not to be modified.**
 
-Reverse circulation is a different sample support from core — chip sampling,
-different recovery and contamination behaviour — so this is the same class of
-question as Q1, one level down. It is left pooled rather than split because
-splitting it would move RC into T002's *non-reference* population, where it
-would be averaged in with trenches and make the trench ratio meaningless.
+The database holds 26 RC collars alongside 446 DD. Per the T004 specification
+every collar-borne composite is typed `DDH`, so **T002's "DDH vs TR/FC"
+comparison is presently Core + RC vs Trench**.
+
+The four types the data distinguishes: **DD** (diamond core) and **RC** (reverse
+circulation) from `collar.hole_type`; **TR**, **CH**, **FC** from
+`trench.hole_type`. TR/CH/FC are already kept separate end to end. Only DD and
+RC are pooled.
+
+**Current exposure is small.** Adel — the 14.32 ratio, the substantive Q1
+result — has **zero** RC collars, and so does Abo Elmagd Hill. The only project
+where RC assays and trenches coexist is Abo Elmajd: 3 RC assay intervals against
+5 DD, on a population already below T002's screening threshold. No current
+conclusion depends on this.
+
+Three options, with costs, are set out in the analysis document: **group**
+(status quo, label inaccurate), **separate** (most informative, but requires
+T002 to gain explicit comparison groups — a bare `RC` type would land in the
+non-reference population and be averaged in with trenches), or **exclude**
+(clean core-vs-surface, but drops RC from the evidence base and still needs a
+separate answer for T005).
 
 `ExtractionReport.collars_by_hole_type` reports the DD/RC/unspecified split on
-every run so the pooling stays visible. Needs deciding: leave pooled, or add a
-third population handled explicitly by the comparison.
+every run so the pooling stays visible in output.
 
 ## Status
 
@@ -259,8 +289,8 @@ third population handled explicitly by the comparison.
 | Q2 | Cut-off default + sensitivity set | T003, T008, T009 | **Open** |
 | Q3 | Minimum mining width | T006 | **Open** |
 | Q4 | Structural orientation inputs | T005, T008, T009 | **Open** |
-| Q5 | Trench sample placement and length | T005 geometry | **Open** — raised by T004 |
-| Q6 | RC pooled with diamond core | T002 reading, T005 | **Open** — raised by T004 |
+| Q5 | Trench sample placement and length | trench-line features | **Investigated** — awaiting decision, see [T010](tasks/T010_trench_geometry_decision.md) |
+| Q6 | RC pooled with diamond core | labelling; T005 later | **Documented** — awaiting decision, see [analysis](analysis/Q6_rc_vs_core.md) |
 
 T001, T002 and T004 are implemented. Q1 now has real evidence (table above);
 Q5 and Q6 were raised by putting the real database through T004 and did not

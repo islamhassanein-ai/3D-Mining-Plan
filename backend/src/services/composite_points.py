@@ -218,24 +218,31 @@ def build_trench_composites(
     the trench floor, compositing along it, and interpolating each composite's
     position along the polyline. The database does not support that:
 
-    1. **Chainage and polyline distance disagree.** In AAF001 the last sample
-       sits at chainage 12-13 m while the polyline reaches only 11.89 m; in
-       MKCH001 the second sample is at chainage 4.5 m and polyline distance
-       5.56 m. Chainage is measured along the trench floor and the polyline is
-       a chord approximation of it, so the two are different measures of the
-       same trench and neither is wrong. Choosing which one positions a sample
-       is a decision about the survey data, not an implementation detail.
+    1. **Chainage is not unique, so it cannot position a sample.** AAF002 and
+       AAF004A carry pairs of samples sharing a chainage -- 0-1 m holds both
+       5.86 and 2.82 g/t -- separated by only 0.15-0.49 m in plan but around a
+       metre in elevation, with consecutive sample numbers. They are a face
+       sampled at two heights, upper and lower channel. Chainage is a
+       one-dimensional coordinate describing a two-dimensional face and cannot
+       tell those apart; elevation can, and elevation lives only in the stored
+       coordinates. In AAF004A the pair differs by 0.06 against 7.86 g/t, so
+       collapsing them is not a rounding matter.
 
-    2. **Chainage is not always monotonic.** AAF002 carries two samples at
-       chainage 0-1 (grades 5.86 and 2.82), two more at 1-2, and so on --
-       parallel channel lines sharing one trench_id and one chainage scale but
-       occupying different positions. Compositing them along a shared axis
-       raises on overlapping intervals, correctly, because they are not one
-       sequence of ground.
+    2. **There is no stored polyline to interpolate along.** This table holds
+       points; the polyline exists only as those points joined in point_order.
+       Nothing in the schema records a surveyed centreline, so a "position along
+       the polyline" can carry no information the coordinates do not already
+       hold.
 
     3. **Chainage is often absent.** The legacy trench uploaders record only a
-       point and a grade, leaving ``from_depth``/``to_depth`` NULL -- 178 rows
-       in this database, including every trench in the Abo Elmagd Hill project.
+       point and a grade, leaving ``from_depth``/``to_depth`` NULL -- 173
+       assayed rows in this database, every trench in the Abo Elmagd Hill
+       project.
+
+    Chainage itself is sound where it exists: in surveyed data it agrees with
+    cumulative coordinate distance to about 1%, and the stored coordinate is the
+    sample's start point. It is a good record of sample length and downline
+    position. It is simply not a position in three dimensions.
 
     What each row does state unambiguously is its own position and its own
     grade, so that is what is used: one composite per assayed row, at the

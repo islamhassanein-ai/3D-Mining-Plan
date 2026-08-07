@@ -17,13 +17,17 @@
 >
 > **Requirements 8–10 below were not implemented as written.** They call for
 > compositing trench samples along `from_depth`/`to_depth` as chainage and
-> interpolating position along the polyline; the real database contradicts that
-> in three ways (chainage disagrees with polyline distance, is non-monotonic
-> where parallel channels share a `trench_id`, and is absent on 178 legacy
-> rows). Each assayed trench row instead becomes one composite at the
-> coordinates it states. See **Q5** in
-> [`../OPEN_QUESTIONS.md`](../OPEN_QUESTIONS.md) — this needs a decision before
-> T005 consumes trench geometry.
+> interpolating position along the polyline. The real database does not support
+> it: chainage is not unique (paired face samples share a chainage but differ by
+> ~1 m in elevation and by up to 18 g/t), no polyline exists in the schema
+> independent of the sample coordinates, and 173 assayed legacy rows carry no
+> chainage. Each assayed trench row instead becomes one composite at the
+> coordinates it states.
+>
+> Investigated in full in
+> [`../analysis/Q5_trench_geometry_findings.md`](../analysis/Q5_trench_geometry_findings.md);
+> the decision is [`T010`](T010_trench_geometry_decision.md), which will rewrite
+> requirements 8–10 to match whatever is chosen.
 >
 > Two smaller corrections to this spec: the collar status column is
 > `hole_status`, not `status`; and `Collar` has no dip/azimuth, so a hole with
