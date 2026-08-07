@@ -8,7 +8,15 @@
 | **Priority** | P0 |
 | **Dependencies** | T001 |
 | **Complexity** | Medium |
-| **Status** | TODO |
+| **Status** | **DONE** |
+
+> Implemented in `backend/src/services/sample_type_comparison.py` with 27 tests
+> in `backend/tests/unit/test_sample_type_comparison.py`.
+>
+> **Known limitation, recorded against Q1:** the comparison is global, not
+> spatially paired. Trenches sit at surface and drillholes mostly do not, so a
+> grade difference may be real vertical zonation rather than a sampling
+> artefact. See the note under Q1 in [`../OPEN_QUESTIONS.md`](../OPEN_QUESTIONS.md).
 
 ---
 

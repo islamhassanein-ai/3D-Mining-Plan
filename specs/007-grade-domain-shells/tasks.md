@@ -51,7 +51,7 @@ produces output that looks correct and is not.
 | Task | Title | Depends on | DB? | Complexity | Status |
 |---|---|---|---|---|---|
 | [T001](tasks/T001_compositing.md) | Length-weighted compositing service | — | No | Medium | **Done** — reference implementation |
-| [T002](tasks/T002_sample_type_comparison.md) | DDH vs TR/FC population comparison | T001 | No | Medium | Ready |
+| [T002](tasks/T002_sample_type_comparison.md) | DDH vs TR/FC population comparison | T001 | No | Medium | **Done** |
 | [T003](tasks/T003_threshold_analysis.md) | Cut-off threshold analysis | T001 | No | Medium | **Blocked — Q2** |
 | [T004](tasks/T004_composite_points.md) | Composite → 3D point extraction | T001 | Yes | Large | Ready |
 | [T005](tasks/T005_grade_interpolant.md) | Anisotropic IDW grid interpolant | T004 | No | Large | **Blocked — Q1, Q4** |

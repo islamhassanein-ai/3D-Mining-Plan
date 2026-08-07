@@ -75,8 +75,34 @@ What is not settled: the **default**. T002's comparison output on the real
 project data should inform it — if trench grades run materially higher than
 core at the same locations, geometry-only is the defensible default.
 
-*Suggested resolution path: implement T002, run it on the actual project, and
-choose the default from the observed grade ratio and Q–Q plot.*
+**T002 is now implemented** and produces the evidence for this question:
+
+| Output | What it answers |
+|---|---|
+| `grade_ratio` (length-weighted, TR+FC vs DDH) | how much higher or lower surface sampling reads overall |
+| `mean_ratio` | whether the gap survives length weighting, or is a sample-support artefact |
+| `by_type[...]` mean vs `length_weighted_mean` | whether short high-grade samples are carrying a type's mean |
+| `by_type[...].cv` | whether trench sampling is materially noisier — a support difference, distinct from a grade difference |
+| `qq_points` | **whether the difference is a uniform uplift or confined to the upper tail.** A ratio alone cannot separate these, and they imply different decisions: a uniform uplift points to oxide/supergene enrichment (a domaining problem), an upper-tail-only divergence points to selective sampling (a weighting problem) |
+| `p10/p25/p75/p90`, `min`, `max` | where in the distribution the two populations part company |
+| `reasons` | the failed screening checks, with numbers |
+
+**Limitation that must be weighed when reading it.** The comparison is
+**global, not spatially paired**. Trenches sit at surface and drillholes mostly
+do not, so a grade difference may be genuine vertical zonation — oxide
+enrichment, a supergene blanket — rather than a sampling artefact. A large
+`grade_ratio` means "these populations differ, find out why", not "trench
+sampling is biased".
+
+Separating the two requires comparing DDH and TR/FC **only where they overlap
+in space** — e.g. restricting DDH composites to those above the base of
+oxidation, or within some distance of a trench. That is not implemented and is
+not in any current task. `TypedComposite` already carries `x/y/z`, which T004
+populates, so it is a small addition if wanted.
+
+*Suggested resolution path: run T002 on the actual project data (needs T004 to
+supply real composites), read the ratio together with the Q–Q shape, and decide
+whether a co-located comparison is needed before setting the default.*
 
 ### Q2. Cut-off default and sensitivity set — **blocks T003, T008, T009**
 
@@ -158,5 +184,6 @@ the user was forced to think about.*
 | Q3 | Minimum mining width | T006 | **Open** |
 | Q4 | Structural orientation inputs | T005, T008, T009 | **Open** |
 
-T001 is unaffected by all four open questions and is **implemented**.
-T002 is unaffected and may proceed.
+T001 and T002 are unaffected by all four open questions and are
+**implemented**. T004 is unaffected and may proceed; it is also the remaining
+prerequisite for answering Q1 against real data.
