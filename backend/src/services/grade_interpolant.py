@@ -177,6 +177,27 @@ def _grid_axes(
     return tuple(float(v) for v in lower), tuple(int(c) for c in counts)
 
 
+def estimate_node_count(
+    composites: Sequence[TypedComposite],
+    cell_size: float,
+    padding: float = DEFAULT_PADDING,
+) -> int:
+    """How many grid nodes ``interpolate_grade_grid`` would create.
+
+    Exists so a caller can refuse an impossible request before allocating
+    anything. A one-metre cell over a three-kilometre property is billions of
+    nodes, and finding that out by running out of memory takes the server with
+    it.
+    """
+    located = [c for c in composites
+               if c.x is not None and c.y is not None and c.z is not None]
+    if not located:
+        return 0
+    positions = np.array([[c.x, c.y, c.z] for c in located], dtype=float)
+    _origin, counts = _grid_axes(positions, cell_size, padding)
+    return int(np.prod(counts))
+
+
 def _blocks(counts: Sequence[int], budget: int):
     """Yield index ranges covering the grid in spatially compact blocks.
 

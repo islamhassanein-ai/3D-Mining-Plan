@@ -1062,3 +1062,50 @@
       border: 1px solid #33353a;
       border-radius: 7px;
     }
+
+    /* --- Grade domain shell panel ---------------------------------------- */
+    .gs-panel { padding: 16px; color: var(--text-light); font-size: 0.8rem; }
+    .gs-panel section { margin-bottom: 18px; }
+    .gs-panel h4 { margin: 0 0 8px; font-size: 0.85rem; }
+    .gs-preamble {
+      margin: 0 0 16px; padding: 8px 10px; border-radius: 6px;
+      background: rgba(56, 189, 248, 0.08);
+      border: 1px solid rgba(56, 189, 248, 0.25);
+      line-height: 1.45;
+    }
+    .gs-rule { border: 0; border-top: 1px solid var(--border-light); margin: 20px 0; }
+    .gs-table { width: 100%; border-collapse: collapse; text-align: left; }
+    .gs-table th, .gs-table td {
+      padding: 3px 5px; border-bottom: 1px solid var(--border-light);
+      font-variant-numeric: tabular-nums;
+    }
+    .gs-table th { font-weight: 600; opacity: 0.75; }
+    .gs-svg {
+      width: 100%; height: auto; display: block;
+      background: rgba(0, 0, 0, 0.22); border-radius: 6px;
+      border: 1px solid var(--border-light);
+    }
+    .gs-clickable { cursor: crosshair; }
+    .gs-hint { margin: 5px 0 0; opacity: 0.65; line-height: 1.4; }
+    .gs-note { margin: 6px 0 0; opacity: 0.6; font-style: italic; line-height: 1.4; }
+    .gs-advisory { margin-top: 8px; line-height: 1.45; }
+    .gs-advisory ul { margin: 5px 0 0; padding-left: 18px; }
+    .gs-form { display: flex; flex-direction: column; gap: 7px; }
+    .gs-group {
+      border: 1px solid var(--border-light); border-radius: 6px;
+      padding: 8px 10px; margin: 4px 0; display: flex;
+      flex-direction: column; gap: 6px;
+    }
+    .gs-group legend { padding: 0 5px; opacity: 0.75; font-size: 0.75rem; }
+    .gs-field { display: flex; align-items: center; gap: 8px; }
+    .gs-field span { flex: 1; }
+    .gs-field input {
+      flex: 0 0 108px; background: black; color: white;
+      border: 1px solid var(--border-light); padding: 3px 5px; border-radius: 4px;
+    }
+    .gs-problems { margin: 8px 0 0; padding-left: 18px; color: #ef4444; }
+    .gs-problems:empty { display: none; }
+    .gs-generate { width: 100%; margin-top: 10px; }
+    .gs-metrics { list-style: none; margin: 0 0 10px; padding: 0; }
+    .gs-metrics li { padding: 2px 0; }
+    .gs-notes { margin: 10px 0 0; padding-left: 18px; line-height: 1.45; opacity: 0.85; }

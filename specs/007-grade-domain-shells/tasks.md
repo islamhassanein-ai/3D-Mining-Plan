@@ -57,8 +57,8 @@ produces output that looks correct and is not.
 | [T005](tasks/T005_grade_interpolant.md) | Anisotropic IDW grid interpolant | T004 | No | Large | **Done** |
 | [T006](tasks/T006_isosurface.md) | Iso-surface mesh extraction | T005 | No | Medium | **Done** — Q3 not enforced, by recommendation |
 | [T007](tasks/T007_shell_validation.md) | Shell geometric + statistical validation | T006 | No | Medium | **Done** |
-| [T008](tasks/T008_api_endpoint.md) | `POST /projects/{id}/grade-shells` | T004–T007 | Yes | Medium | **Blocked — Q2, Q4** |
-| [T009](tasks/T009_frontend_panel.md) | Grade-shell panel + rendering | T008 | — | Medium | **Blocked — Q1, Q2, Q4** |
+| [T008](tasks/T008_api_endpoint.md) | `POST /projects/{id}/grade-shells` | T004–T007 | Yes | Medium | **Done** |
+| [T009](tasks/T009_frontend_panel.md) | Grade-shell panel + rendering | T008 | — | Medium | **Done** |
 | [T010](tasks/T010_trench_geometry_decision.md) | Resolve trench geometry (Q5) | T004 | Yes | Small | **Done** |
 | [T011](tasks/T011_adel_face_channel_classification.md) | Adel face-channel classification | T004 | Yes | Small | **Done** — source corrected, re-imported |
 

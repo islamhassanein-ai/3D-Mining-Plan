@@ -31,6 +31,11 @@ export class LayerTogglePanel {
       // surface. The geologist turns them on when reading structure, which is
       // a deliberate act, not the default question asked of the scene.
       { key: 'wireframes', label: 'Vein Wireframes', color: '#ec4899', get: () => viewport.wireframesRenderer && viewport.wireframesRenderer.group, defaultOff: true },
+      // Generated grade shells are their own layer, separate from imported vein
+      // solids: one is an interpretation this tool produced from the assays in
+      // view, the other is geometry someone else drew, and a reviewer needs to
+      // be able to show and hide them independently.
+      { key: 'gradeShells', label: 'Grade Shells', color: '#38bdf8', get: () => viewport.wireframesRenderer && viewport.wireframesRenderer.gradeShellGroup, defaultOff: true },
       { key: 'structural', label: 'Structural Readings', color: '#eab308', get: () => viewport.structuralReadingsRenderer && viewport.structuralReadingsRenderer.group, defaultOff: true },
       // The Depth Planner's zone slab, proposed hole and depth call-outs. Empty
       // until the planner is opened, so the toggle is harmless before then.

@@ -39,6 +39,18 @@ export function parseOBJ(text) {
   return { vertices, indices };
 }
 
+// Generated grade-domain shells are a different kind of object from an
+// imported vein solid -- one is an interpretation this tool produced, the other
+// is geometry someone else drew -- so they get their own group, their own
+// colour, and their own layer toggle. Rendering them into the vein group would
+// make an interpretation indistinguishable from imported data.
+const GRADE_SHELL_SOLID_TYPE = 'grade_shell';
+
+const STYLES = {
+  vein_solid: { fill: 0xec4899, edge: 0xf472b6, opacity: 0.35 },
+  grade_shell: { fill: 0x38bdf8, edge: 0x7dd3fc, opacity: 0.45 },
+};
+
 export class WireframesRenderer {
   constructor(scene, resolveGeometry = null) {
     this.scene = scene;
@@ -46,6 +58,10 @@ export class WireframesRenderer {
     this.group = new THREE.Group();
     this.group.name = 'vein-wireframes';
     this.scene.add(this.group);
+
+    this.gradeShellGroup = new THREE.Group();
+    this.gradeShellGroup.name = 'grade-shells';
+    this.scene.add(this.gradeShellGroup);
   }
 
   async render(wireframes) {
@@ -89,11 +105,16 @@ export class WireframesRenderer {
         geometry.setIndex(indices);
         geometry.computeVertexNormals();
 
-        // Premium translucent shaded vein solid material
+        const isGradeShell = w.solid_type === GRADE_SHELL_SOLID_TYPE;
+        const style = isGradeShell ? STYLES.grade_shell : STYLES.vein_solid;
+
+        // Translucent, and depthWrite off, so the drillholes the shell was
+        // built from stay visible through it. An opaque shell hides the very
+        // data a reviewer needs to check it against.
         const material = new THREE.MeshStandardMaterial({
-          color: 0xec4899, // Pink for ore veins
+          color: style.fill,
           transparent: true,
-          opacity: 0.35,
+          opacity: style.opacity,
           roughness: 0.2,
           metalness: 0.1,
           side: THREE.DoubleSide,
@@ -104,20 +125,21 @@ export class WireframesRenderer {
         mesh.userData = {
           id: w.id,
           name: w.name,
-          type: 'vein_solid'
+          type: isGradeShell ? GRADE_SHELL_SOLID_TYPE : 'vein_solid',
+          parameters: w.parameters || null
         };
 
         // Add a wireframe helper overlay to make edges distinct
         const wireframeGeom = new THREE.WireframeGeometry(geometry);
         const wireframeMat = new THREE.LineBasicMaterial({
-          color: 0xf472b6,
+          color: style.edge,
           transparent: true,
           opacity: 0.5
         });
         const line = new THREE.LineSegments(wireframeGeom, wireframeMat);
         mesh.add(line);
 
-        this.group.add(mesh);
+        (isGradeShell ? this.gradeShellGroup : this.group).add(mesh);
       } catch (err) {
         console.error(`Failed to render wireframe ${w.name}:`, err);
       }
@@ -125,14 +147,16 @@ export class WireframesRenderer {
   }
 
   clear() {
-    this.group.traverse((child) => {
-      if (child.isMesh) {
-        if (child.geometry) child.geometry.dispose();
-        if (child.material) child.material.dispose();
+    for (const group of [this.group, this.gradeShellGroup]) {
+      group.traverse((child) => {
+        if (child.isMesh) {
+          if (child.geometry) child.geometry.dispose();
+          if (child.material) child.material.dispose();
+        }
+      });
+      while (group.children.length > 0) {
+        group.remove(group.children[0]);
       }
-    });
-    while (this.group.children.length > 0) {
-      this.group.remove(this.group.children[0]);
     }
   }
 }

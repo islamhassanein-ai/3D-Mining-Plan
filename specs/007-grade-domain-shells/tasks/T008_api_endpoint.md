@@ -8,21 +8,20 @@
 | **Priority** | P0 |
 | **Dependencies** | T004, T005, T006, T007 |
 | **Complexity** | Medium |
-| **Status** | **BLOCKED — Q2, Q4** |
+| **Status** | **DONE** |
 
-> ## Blocked: do not implement yet
+> Implemented in `backend/src/api/grade_shells.py` with 16 integration tests,
+> plus migration `f6a7b8c9d0e1` adding `wireframe.parameters` (applied to the
+> live database, downgrade verified).
 >
-> **Q2** — the default threshold list on `GET /grade-analysis` and the single
-> default generation threshold are unconfirmed. **Q4** — whether the ellipsoid
-> ranges and orientation are required inputs or carry defaults is undecided,
-> and that changes the Pydantic model directly.
+> Resolved by **D7** and **D8**: the threshold, the ellipsoid and the sample
+> weights are all **required** on every request — no defaults anywhere. The
+> candidate list on `GET /grade-analysis` shapes the capture curve only and is
+> overridable per request.
 >
-> Both are in [`../OPEN_QUESTIONS.md`](../OPEN_QUESTIONS.md). The example
-> request body below uses illustrative values, not approved defaults.
->
-> Also binding: **D3** — no response field, message, or persisted label may
-> describe the output as a resource or reserve, and no tonnage figure may be
-> returned.
+> **D3 is enforced by a test**: the response body is asserted to contain none of
+> "resource", "reserve", "measured", "indicated", "inferred", "jorc", "43-101",
+> "tonnage" or "tonnes".
 
 ---
 

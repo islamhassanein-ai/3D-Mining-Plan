@@ -8,21 +8,19 @@
 | **Priority** | P1 |
 | **Dependencies** | T008 |
 | **Complexity** | Medium |
-| **Status** | **BLOCKED — Q1, Q2, Q4** |
+| **Status** | **DONE** |
 
-> ## Blocked: do not implement yet
+> Implemented as `frontend/src/components/grade_shell_panel.js` (DOM only) plus
+> `frontend/src/services/grade_shell_plots.js` (pure), with 24 tests against the
+> pure module. `node --test` has no DOM, so putting the plot geometry and
+> request building in a pure module is what makes any of it testable.
 >
-> This panel's defaults must match T008's exactly (AC-4), so it inherits every
-> question T008 is blocked on, plus **Q1** — the trench-weight slider's default
-> position is the trench-influence decision made visible, and `0.5` is a
-> placeholder, not an approved value. See
-> [`../OPEN_QUESTIONS.md`](../OPEN_QUESTIONS.md).
+> **Q1 no longer needs a default weight**: per **D6/D7** the panel requires a
+> weight for every sample type present and refuses an incomplete form. There is
+> no slider default to be wrong.
 >
-> Also binding: **D3** — the panel must not use "resource", "reserve",
-> "Measured", "Indicated", "Inferred", "JORC", or "NI 43-101" to describe the
-> output, and must show no tonnage. Volume and metal capture are permitted;
-> they describe the shell, not the deposit. The panel presents evidence — the
-> competent person signs off.
+> **D3**: no resource/reserve vocabulary and no tonnage. Volume and metal
+> capture are shown — they describe the shell, not the deposit.
 
 ---
 
