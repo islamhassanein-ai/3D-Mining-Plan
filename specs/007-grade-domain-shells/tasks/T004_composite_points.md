@@ -126,6 +126,13 @@ T005.
 12. `sample_type` is taken from `hole_type` where it is `TR`, `CH`, or `FC`,
     upper-cased; anything else defaults to `"TR"`. The classification belongs in
     the data — **no `trench_id` string matching in any service** (see T011).
+13. **Average repeat samples on the same metre** (decision D5). Rows sharing a
+    `trench_id` and a stated chainage interval describe one metre of ground —
+    either a verification re-sample or extra vertical samples within the metre —
+    and are combined into a single modelling value by arithmetic mean of grade
+    and of coordinates, before any composite is emitted. The key is **identity,
+    not proximity**: never merge on distance, and never merge rows with no
+    stated chainage. Source records are untouched. Report the counts.
 
 ### Functional — result
 
@@ -228,10 +235,17 @@ exactly those coordinates, each `length = 1.0`. Nothing is interpolated.
 `z` must still be the row's stated elevation. Dip is ground slope metadata, not
 a trajectory.
 
-**F7b — paired chainage does not collide.** Four rows, two at chainage `0–1`
-and two at `1–2`, at distinct coordinates (Adel's AAF002 pattern). Expect
-**four** composites, all four grades preserved. Compositing along chainage would
-raise on the overlap; placing each row at its own coordinates keeps them.
+**F7b — samples sharing a metre are averaged** (D5). Four rows, two at chainage
+`0–1` (5.86, 2.82) and two at `1–2` (8.54, 35.90), at distinct coordinates —
+Adel's AAF002 pattern. Expect **two** composites, grades `4.34` and `22.22`, and
+a merge report of 2 intervals / 2 rows absorbed. The merged position is the mean
+of its members' coordinates.
+
+**F7b2 — proximity alone never merges.** Two rows 0.1 m apart on *different*
+chainage intervals stay as two composites with their original grades.
+
+**F7b3 — rows with no chainage are never merged**, even at identical
+coordinates.
 
 **F7c — no stated length.** A row with `from_depth`/`to_depth` NULL is excluded
 and warned about by default, and included with the given length when
@@ -262,7 +276,8 @@ order.
 | AC-7 | P0 | Every skipped hole/trench appears in `report.skipped` or `report.warnings` with a reason |
 | AC-8 | P0 | The trench query has a total `ORDER BY`, and extraction is deterministic |
 | AC-9 | P0 | No `trench_id` (or any hole-name) string matching anywhere in `backend/src/services/` |
-| AC-10 | P1 | The pure builders are unit-tested without a database |
+| AC-10 | P0 | Repeat samples on one metre are averaged per D5, keyed on identity and never on distance, with the counts reported |
+| AC-11 | P1 | The pure builders are unit-tested without a database |
 
 ---
 
@@ -278,6 +293,12 @@ order.
   accident and leaves every other consumer of the table reading the old value.
 - Reading trenches without a total `ORDER BY` because "it seems to come back in
   order anyway".
+- Merging samples on a distance threshold. Two samples close together may be
+  describing different ground; two samples on one interval are describing the
+  same ground however far apart their coordinates put them. Identity, not
+  proximity.
+- Averaging away a repeat sample in the source data. The merge is a modelling
+  step; both original assays stay in the database.
 - Including planned-hole target grades. They are a drilling proposal, and
   turning them into an orebody shell manufactures a deposit that does not exist.
 - Returning composites with `None` coordinates and letting T005 deal with it.

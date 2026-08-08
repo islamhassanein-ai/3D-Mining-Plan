@@ -110,6 +110,11 @@ class ExtractionReport:
     n_trench_rows_read: int = 0
     n_unassayed_assay_intervals: int = 0
     n_unassayed_trench_rows: int = 0
+    # Repeat sampling of the same metre of trench, averaged in the modelling
+    # layer. n_trench_intervals_merged counts the intervals that had more than
+    # one sample; n_trench_rows_absorbed counts the rows those replaced.
+    n_trench_intervals_merged: int = 0
+    n_trench_rows_absorbed: int = 0
     skipped: List[str] = field(default_factory=list)
     warnings: List[str] = field(default_factory=list)
     grade_unit: Optional[str] = None
@@ -199,16 +204,89 @@ def build_drillhole_composites(
     return located, warnings
 
 
+def _merge_repeat_samples(entries: List[Dict[str, Any]]) -> tuple:
+    """Average samples that describe the same metre of the same trench.
+
+    Two situations in the Adel data put more than one assay on one interval:
+
+    * a stretch of trench was **sampled again** to verify the first result --
+      AAF004A's rows 33-35 repeat chainages 23-26 already covered by rows 23-25;
+    * **additional vertical samples** were taken within a metre to test whether
+      a vein continues upward or downward -- AAF002 carries five such pairs,
+      about a metre apart in elevation.
+
+    Neither is an independent spatial observation. Left alone, both would let
+    one metre of ground vote several times in the interpolation, and the vote
+    would be loudest exactly where someone went back for a second look --
+    which is to say, on the mineralisation.
+
+    The grouping key is **identity, not proximity**: same trench, same stated
+    chainage interval. Samples are never merged for being close together. Two
+    rows a hand's breadth apart on different intervals stay separate, because
+    the data says they describe different ground.
+
+    The merged value is the arithmetic mean of the grades, and the merged
+    position the arithmetic mean of the coordinates -- for a vertical pair that
+    places the single value at the mid-height of the sampled column, which is
+    what the pair jointly describes. Rows with no stated chainage are never
+    merged: without an interval there is nothing to say they share a metre.
+
+    Deterministic: groups are emitted in ascending chainage order, and the
+    arithmetic mean does not depend on the order within a group.
+
+    Returns ``(merged_entries, n_groups_merged, n_rows_absorbed)``.
+    """
+    groups: Dict[Any, List[Dict[str, Any]]] = {}
+    ungrouped: List[Dict[str, Any]] = []
+
+    for entry in entries:
+        key = (entry["from_depth"], entry["to_depth"])
+        if key[0] is None or key[1] is None:
+            ungrouped.append(entry)
+            continue
+        groups.setdefault(key, []).append(entry)
+
+    merged: List[Dict[str, Any]] = []
+    n_groups = 0
+    n_absorbed = 0
+
+    for key in sorted(groups, key=lambda k: (k[0], k[1])):
+        members = groups[key]
+        if len(members) == 1:
+            merged.append(members[0])
+            continue
+
+        n_groups += 1
+        n_absorbed += len(members) - 1
+        count = float(len(members))
+        head = dict(members[0])
+        head["grade_value"] = sum(m["grade_value"] for m in members) / count
+        head["easting"] = sum(m["easting"] for m in members) / count
+        head["northing"] = sum(m["northing"] for m in members) / count
+        head["elevation"] = sum(m["elevation"] for m in members) / count
+        head["merged_from"] = len(members)
+        merged.append(head)
+
+    return merged + ungrouped, n_groups, n_absorbed
+
+
 def build_trench_composites(
     points: Sequence[Dict[str, Any]],
     length_when_unspecified: Optional[float] = None,
+    merge_repeat_samples: bool = True,
 ) -> tuple:
-    """Composites for one trench line, one per assayed sample row.
+    """Composites for one trench line, one per assayed sample interval.
+
+    Where several rows describe the same metre of the same trench -- a
+    verification re-sample, or extra vertical samples within one metre -- they
+    are averaged into a single modelling value before any composite is emitted.
+    See ``_merge_repeat_samples``. The source rows are never altered; this
+    happens in the modelling layer only.
 
     ``points`` are the trench's rows in ``point_order``, each carrying
     ``easting``, ``northing``, ``elevation``, ``grade_value``, ``hole_type``,
     and optionally ``from_depth``/``to_depth``. Returns
-    ``(composites, warnings, n_unassayed)``.
+    ``(composites, warnings, n_unassayed, n_merge_groups, n_merged_rows)``.
 
     Each row's stored coordinates are authoritative and mark the **midpoint of
     the sample interval**, so a sample needs no interpolation to be placed.
@@ -220,14 +298,14 @@ def build_trench_composites(
     coordinates, the database does not support it:
 
     1. **Chainage is not unique, so it cannot position a sample.** AAF002 and
-       AAF004A carry pairs of samples sharing a chainage -- 0-1 m holds both
-       5.86 and 2.82 g/t -- separated by only 0.15-0.49 m in plan but around a
-       metre in elevation, with consecutive sample numbers. They are a face
-       sampled at two heights, upper and lower channel. Chainage is a
-       one-dimensional coordinate describing a two-dimensional face and cannot
-       tell those apart; elevation can, and elevation lives only in the stored
-       coordinates. In AAF004A the pair differs by 0.06 against 7.86 g/t, so
-       collapsing them is not a rounding matter.
+       AAF004A carry several rows per chainage -- 0-1 m holds both 5.86 and
+       2.82 g/t -- separated by only 0.15-0.49 m in plan but around a metre in
+       elevation. Chainage is a one-dimensional coordinate describing a
+       two-dimensional face and cannot tell those apart; elevation can, and
+       elevation lives only in the stored coordinates. (Those rows do describe
+       the same metre and are averaged together by ``_merge_repeat_samples``
+       before a composite is emitted -- but the averaging needs their positions
+       to know which rows share a metre and where the result sits.)
 
     2. **There is no stored polyline to interpolate along.** This table holds
        points; the polyline exists only as those points joined in point_order.
@@ -255,6 +333,10 @@ def build_trench_composites(
     composites: List[TypedComposite] = []
     n_unassayed = 0
 
+    # First pass: keep the rows that carry an assay and a complete position.
+    # Merging has to happen across whole rows, so nothing is turned into a
+    # composite until every member of a group has been seen.
+    entries: List[Dict[str, Any]] = []
     for point in points:
         grade = _as_float(point.get("grade_value"))
         if grade is None:
@@ -274,6 +356,37 @@ def build_trench_composites(
                 f"cannot be placed"
             )
             continue
+
+        entries.append({
+            "trench_id": point.get("trench_id"),
+            "point_order": point.get("point_order"),
+            "grade_value": grade,
+            "easting": easting,
+            "northing": northing,
+            "elevation": elevation,
+            "from_depth": _as_float(point.get("from_depth")),
+            "to_depth": _as_float(point.get("to_depth")),
+            "hole_type": point.get("hole_type"),
+            "merged_from": 1,
+        })
+
+    n_merge_groups = 0
+    n_merged_rows = 0
+    if merge_repeat_samples:
+        entries, n_merge_groups, n_merged_rows = _merge_repeat_samples(entries)
+        if n_merge_groups:
+            trench_id = entries[0].get("trench_id") if entries else "?"
+            warnings.append(
+                f"{trench_id}: {n_merged_rows} repeat sample(s) averaged into "
+                f"{n_merge_groups} interval(s) -- several rows described the "
+                f"same metre of trench"
+            )
+
+    for point in entries:
+        grade = point["grade_value"]
+        easting = point["easting"]
+        northing = point["northing"]
+        elevation = point["elevation"]
 
         from_depth = _as_float(point.get("from_depth"))
         to_depth = _as_float(point.get("to_depth"))
@@ -306,7 +419,7 @@ def build_trench_composites(
             )
         )
 
-    return composites, warnings, n_unassayed
+    return composites, warnings, n_unassayed, n_merge_groups, n_merged_rows
 
 
 # ---------------------------------------------------------------------------
@@ -318,8 +431,16 @@ def extract_composite_points(
     project_id,
     composite_length: float = DEFAULT_COMPOSITE_LENGTH,
     trench_length_when_unspecified: Optional[float] = None,
+    merge_repeat_samples: bool = True,
 ) -> ExtractionResult:
     """Load one project's assayed data as 3D-located composites.
+
+    Trench rows describing the same metre of the same trench -- a verification
+    re-sample, or extra vertical samples within one metre -- are averaged into a
+    single modelling value. The source rows are untouched; see
+    ``_merge_repeat_samples``. Pass ``merge_repeat_samples=False`` to see the
+    unmerged population, which is useful for checking what the merge did but is
+    not a modelling input.
 
     Raises ``ValueError`` when the project's assays carry more than one grade
     unit. Converting between them would be a data decision made silently in the
@@ -458,27 +579,32 @@ def extract_composite_points(
         )
         report.n_trench_lines_considered += 1
 
-        located, warnings, n_unassayed = build_trench_composites(
-            [
-                {
-                    "trench_id": r.trench_id,
-                    "point_order": r.point_order,
-                    "easting": r.easting,
-                    "northing": r.northing,
-                    "elevation": r.elevation,
-                    "grade_value": r.grade_value,
-                    "hole_type": r.hole_type,
-                    "from_depth": r.from_depth,
-                    "to_depth": r.to_depth,
-                }
-                for r in ordered
-            ],
-            trench_length_when_unspecified,
+        located, warnings, n_unassayed, n_groups, n_absorbed = (
+            build_trench_composites(
+                [
+                    {
+                        "trench_id": r.trench_id,
+                        "point_order": r.point_order,
+                        "easting": r.easting,
+                        "northing": r.northing,
+                        "elevation": r.elevation,
+                        "grade_value": r.grade_value,
+                        "hole_type": r.hole_type,
+                        "from_depth": r.from_depth,
+                        "to_depth": r.to_depth,
+                    }
+                    for r in ordered
+                ],
+                trench_length_when_unspecified,
+                merge_repeat_samples,
+            )
         )
 
         composites.extend(located)
         report.warnings.extend(warnings)
         report.n_unassayed_trench_rows += n_unassayed
+        report.n_trench_intervals_merged += n_groups
+        report.n_trench_rows_absorbed += n_absorbed
         report.n_trench_composites += len(located)
 
     for composite in composites:

@@ -74,6 +74,8 @@ def analyze(project_name, trench_length=None, composite_length=1.0):
             report.n_assay_intervals_read, report.n_unassayed_assay_intervals))
         print("trench rows read          : {} ({} unassayed)".format(
             report.n_trench_rows_read, report.n_unassayed_trench_rows))
+        print("repeat samples merged     : {} row(s) averaged into {} interval(s)".format(
+            report.n_trench_rows_absorbed, report.n_trench_intervals_merged))
         print("trench lines considered   : {}".format(report.n_trench_lines_considered))
         print("composites by sample type : {}".format(report.composites_by_type))
         print("total composites          : {}".format(len(result.composites)))

@@ -71,6 +71,37 @@ any tonnage figure; any contained-metal figure presented as an estimate.
 Volume in cubic metres and metal *capture fraction* are geometry and validation
 statistics and are allowed — they describe the shell, not the deposit.
 
+### D5. Repeat samples on the same metre are averaged (set 2026-08-08)
+
+**Where more than one sample represents the same metre of the same trench, they
+are combined into one modelling value by arithmetic mean.** Two situations in
+Adel produce this:
+
+1. **A stretch was sampled again** to verify the first result. The repeat is not
+   an independent spatial observation.
+2. **Additional vertical samples within one metre**, testing whether a
+   mineralised vein continues upward or downward. These should not get several
+   votes in the interpolation merely because several measurements exist.
+
+**The grouping key is identity, not proximity:** same `trench_id`, same stated
+chainage interval. Samples are **never** merged for being geographically close —
+two rows a hand's breadth apart on different intervals stay separate, and rows
+with no stated chainage are never merged at all, because without an interval
+nothing says they share a metre.
+
+The merged grade is the arithmetic mean of the members' grades; the merged
+position is the arithmetic mean of their coordinates, which for a vertical pair
+places the value at the mid-height of the column the pair jointly describes.
+
+**Source records are never altered.** This happens in the modelling layer, in
+`composite_points._merge_repeat_samples`, and it is deterministic: groups are
+emitted in ascending chainage order and the mean does not depend on order within
+a group. `ExtractionReport.n_trench_intervals_merged` and
+`n_trench_rows_absorbed` report what was merged on every run.
+
+Applied to Adel: **16 rows across 8 intervals** merge into 8 values — 5
+intervals in AAF002 (case 2) and 3 in AAF004A (case 1).
+
 ### D4. Implementer boundary
 
 The implementing model implements the specified behaviour only. It must not
@@ -140,18 +171,24 @@ venv/Scripts/python.exe -m backend.analyze_sample_types "Adel"
 That last confirmation splits what had been one surface population into two, and
 they are not alike:
 
+Current figures, with the D5 repeat-sample merge applied:
+
 | Population | n | lw mean | median | p75 | max | cv |
 |---|---|---|---|---|---|---|
 | **DDH** (23 DD collars) | 247 | 0.167 | 0.020 | 0.030 | 6.98 | 4.65 |
-| **FC** (6 AAF lines) | 236 | **3.908** | 0.720 | 5.985 | 49.46 | 1.66 |
+| **FC** (6 AAF lines) | 228 | **3.845** | 0.740 | 5.690 | 49.46 | 1.64 |
 | **TR** (6 AAT lines) | 188 | **0.527** | 0.050 | 0.185 | 16.68 | 3.34 |
 
 | Comparison | length-weighted grade ratio |
 |---|---|
-| FC vs DDH | **23.46** |
+| FC vs DDH | **23.08** |
 | TR vs DDH | **3.16** |
-| **FC vs TR** | **7.42** |
-| *(FC + TR pooled) vs DDH — the old figure* | *14.32* |
+| **FC vs TR** | **7.30** |
+| *(FC + TR pooled) vs DDH — the misleading figure* | *13.95* |
+
+*(Before the D5 merge these read FC n=236, lw 3.908, FC vs DDH 23.46, FC vs TR
+7.42, pooled 14.32. The merge affects FC only — all 8 merged intervals are on
+AAF lines.)*
 
 **The 14.32 was an artefact of pooling two unlike populations.** Face channels
 read 7.4× the trench floors. Any single "trench weight" would be applying one
@@ -170,12 +207,17 @@ so `analyze_sample_types.py "Adel"` reports
 `{'DDH': 247, 'FC': 236, 'TR': 188}` directly, with no code change and no
 `trench_id` string matching anywhere in the services.
 
-**One open item carried into this decision:** `AAF004A` is a **re-sampled face** —
-samples taken again to confirm earlier results. Three of its rows share a
-chainage with an earlier row ~1 m away in elevation, and the paired grades
-disagree sharply (0.06 vs 7.86, 0.06 vs 6.38, 0.54 vs 18.43 g/t). Before FC
-weighting is set, decide whether both members of a verification pair vote in
-interpolation, or only one. See T011's closing section.
+**Resolved by D5:** the verification re-samples in `AAF004A` and the vertical
+pairs in `AAF002` are averaged into one value per metre, so no metre of ground
+votes twice.
+
+**A correction while investigating this:** `AAF004A` is **not** a re-sample of
+`AAF004`. Their elevation ranges are nearly disjoint (297.5–301.1 against
+295.7–297.2), nearest-neighbour 3-D distances run 1.9–7.1 m, only 1 of 36 rows
+shares a chainage with its nearest `AAF004` row, and grades at those neighbours
+differ wildly (8.47 against 0.03). `AAF004A` is a **separate, lower face**. The
+re-sampling is *within* `AAF004A` — its rows 33–35 repeat chainages 23–26 already
+covered by rows 23–25.
 
 **Withdrawn:** an earlier version of this table also listed Abo Elmagd Hill
 (0.73) and Abo Elmajd (1.26), and argued from the spread between them that no
