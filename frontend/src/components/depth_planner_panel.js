@@ -270,6 +270,12 @@ export class DepthPlannerPanel {
       .dp-undrillable .dp-cand-note { color: #fbbf24; }
       .dp-apply { padding: 2px 8px; font-size: 10px; }
       .dp-apply:disabled { opacity: 0.4; cursor: not-allowed; }
+      @keyframes dpFlash {
+        0%, 100% { background: transparent; }
+        30%      { background: rgba(212,175,55,0.28); }
+      }
+      .dp-flash { animation: dpFlash 1.1s ease-out 1; border-radius: 4px; }
+      @media (prefers-reduced-motion: reduce) { .dp-flash { animation: none; } }
       .dp-actions { display: flex; gap: 6px; margin: 14px 0 4px; }
       .dp-actions .btn-small { flex: 1; }
     `;
@@ -669,7 +675,7 @@ export class DepthPlannerPanel {
 
     if (!s || !s.candidates.length) {
       return `
-        <div class="dp-section-title" style="margin-top:12px;">Suggested holes</div>
+        <div class="dp-section-title" id="dp-suggestions" style="margin-top:12px;">Suggested holes</div>
         <div class="dp-note">No orientation from this collar reaches the zone at
         ${s ? s.bounds.minAngle : 30}° or better within the depth budget. The zone probably
         outcrops above this collar, or lies behind it — move the collar down-dip
@@ -697,7 +703,7 @@ export class DepthPlannerPanel {
     }).join('');
 
     return `
-      <div class="dp-section-title" style="margin-top:12px;">Suggested holes</div>
+      <div class="dp-section-title" id="dp-suggestions" style="margin-top:12px;">Suggested holes</div>
       <div class="dp-note">
         ${hits
           ? `Your hole cuts at <b>${current.toFixed(0)}°</b>.`
@@ -825,6 +831,42 @@ export class DepthPlannerPanel {
   open() {
     this.container.classList.add('open');
     this.recompute();
+  }
+
+  /**
+   * Open straight at the suggestions.
+   *
+   * The suggestions sit below four sections of inputs, so from the sidebar they
+   * are effectively invisible -- you have to know they exist to scroll to them.
+   * This is the entry point for "just tell me where to drill": it opens the
+   * panel, scrolls the table into view, and flashes it once so the eye lands in
+   * the right place.
+   */
+  openAtSuggestions() {
+    this.open();
+
+    const heading = this.container.querySelector('#dp-suggestions');
+    if (!heading) return;
+
+    // Deliberately NOT inside requestAnimationFrame. The panel was display:none
+    // a moment ago and scrollIntoView needs layout, but rAF does not fire at all
+    // while the tab is not compositing -- so deferring to a frame means the
+    // scroll silently never happens for anyone whose window is backgrounded when
+    // they click. recompute() already rebuilt the DOM synchronously, and reading
+    // offsetWidth forces the layout we need right here, on demand.
+    //
+    // That read doubles as the animation restart: removing the class, flushing
+    // layout, then re-adding it makes a second press flash again rather than
+    // doing nothing because the class was already present.
+    heading.classList.remove('dp-flash');
+    void heading.offsetWidth;
+    // Instant, not smooth. Smooth scrolling is animated by the same frame loop
+    // that rAF uses, so it makes no progress at all in a backgrounded window --
+    // the panel opens and simply does not move. It is also the wrong feel here:
+    // the target sits ~1200px down a 500px-tall panel, and animating that far is
+    // slower and more disorienting than arriving. The flash marks the landing.
+    heading.scrollIntoView({ block: 'start' });
+    heading.classList.add('dp-flash');
   }
 
   close() {

@@ -199,6 +199,10 @@
           <button id="open-supp-btn" class="btn-sidebar">Upload Topo / Trenches / Veins</button>
           <button id="open-struct-btn" class="btn-sidebar">Structural Readings</button>
           <button id="open-planner-btn" class="btn-sidebar">Drillhole Depth Planner</button>
+          <!-- Same panel, but landing on the suggestions instead of the inputs.
+               "Where should I drill" and "how deep is this hole I already have"
+               are different questions, and the second one buried the first. -->
+          <button id="open-suggest-btn" class="btn-sidebar">Suggest Best Boreholes</button>
           <button id="open-qaqc-btn" class="btn-sidebar">QA/QC Reference Standards</button>
           <button id="open-share-btn" class="btn-sidebar">Share Project</button>
           <button id="open-history-btn" class="btn-sidebar">View Import History</button>
@@ -686,6 +690,12 @@
         document.getElementById('open-planner-btn').onclick = () => {
           if (depthPlanner.isOpen()) depthPlanner.close();
           else depthPlanner.open();
+        };
+        // Always opens (never toggles shut): the point is to land on the
+        // suggestions, so pressing it while the panel is already open should
+        // scroll there rather than dismiss the thing you asked to see.
+        document.getElementById('open-suggest-btn').onclick = () => {
+          depthPlanner.openAtSuggestions();
         };
         document.getElementById('open-qaqc-btn').onclick = () => showQaqcModal();
         document.getElementById('open-share-btn').onclick = () => showShareModal();
