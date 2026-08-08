@@ -40,6 +40,8 @@ from backend.src.api.history import router as history_router
 from backend.src.api.export import router as export_router
 from backend.src.api.structural import router as structural_router
 from backend.src.api.qaqc import router as qaqc_router
+from backend.src.api.planned_holes import router as planned_holes_router
+from backend.src.api.grade_shells import router as grade_shells_router
 
 # Include routers
 app.include_router(auth_router)
@@ -54,6 +56,8 @@ app.include_router(history_router)
 app.include_router(export_router)
 app.include_router(structural_router)
 app.include_router(qaqc_router)
+app.include_router(planned_holes_router)
+app.include_router(grade_shells_router)
 
 @app.get("/api/health")
 def read_root():

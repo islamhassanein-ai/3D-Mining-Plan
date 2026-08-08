@@ -271,6 +271,28 @@ export const ApiClient = {
     return res.json();
   },
 
+  // Saves a Depth Planner drill pattern as planned holes. The server refuses
+  // the whole request if any hole_id already belongs to a DRILLED hole, so a
+  // 409 here is a name clash the geologist has to resolve, not a transient
+  // failure to retry -- its detail names the offending holes.
+  async createPlannedHoles(projectId, holes, source = 'depth planner') {
+    const res = await fetch(`${API_BASE_URL}/projects/${projectId}/planned-holes`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getHeaders()
+      },
+      body: JSON.stringify({ holes, source })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Could not save planned holes' }));
+      throw new Error(
+        typeof err.detail === 'string' ? err.detail : 'Could not save planned holes'
+      );
+    }
+    return res.json();
+  },
+
   async deleteStructuralReading(projectId, readingId) {
     const res = await fetch(`${API_BASE_URL}/projects/${projectId}/structural/${readingId}`, {
       method: 'DELETE',
@@ -331,6 +353,68 @@ export const ApiClient = {
       const err = await res.json().catch(() => ({ detail: 'Addition failed' }));
       throw new Error(err.detail || 'Addition failed');
     }
+    return res.json();
+  },
+
+  // Grade domain shells
+  async getGradeAnalysis(projectId, options = {}) {
+    const params = new URLSearchParams();
+    if (options.compositeLength) params.set('composite_length', options.compositeLength);
+    if (options.trenchLengthWhenUnspecified) {
+      params.set('trench_length_when_unspecified', options.trenchLengthWhenUnspecified);
+    }
+    (options.thresholds || []).forEach(t => params.append('thresholds', t));
+    const query = params.toString();
+    const res = await fetch(
+      `${API_BASE_URL}/projects/${projectId}/grade-analysis${query ? `?${query}` : ''}`,
+      { headers: getHeaders() }
+    );
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to load grade analysis' }));
+      throw new Error(err.detail || 'Failed to load grade analysis');
+    }
+    return res.json();
+  },
+
+  async getContactAnalysis(projectId, threshold, options = {}) {
+    const params = new URLSearchParams({ threshold });
+    if (options.binWidth) params.set('bin_width', options.binWidth);
+    if (options.maxDistance) params.set('max_distance', options.maxDistance);
+    (options.sampleTypes || []).forEach(t => params.append('sample_types', t));
+    const res = await fetch(
+      `${API_BASE_URL}/projects/${projectId}/grade-analysis/contact?${params.toString()}`,
+      { headers: getHeaders() }
+    );
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Failed to load contact analysis' }));
+      throw new Error(err.detail || 'Failed to load contact analysis');
+    }
+    return res.json();
+  },
+
+  async createGradeShell(projectId, request) {
+    const res = await fetch(`${API_BASE_URL}/projects/${projectId}/grade-shells`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getHeaders()
+      },
+      body: JSON.stringify(request)
+    });
+    if (!res.ok) {
+      // The server's own message matters here -- the node-budget refusal tells
+      // the user to increase the cell size, and a generic string would lose it.
+      const err = await res.json().catch(() => ({ detail: 'Shell generation failed' }));
+      throw new Error(typeof err.detail === 'string' ? err.detail : 'Shell generation failed');
+    }
+    return res.json();
+  },
+
+  async getGradeShells(projectId) {
+    const res = await fetch(`${API_BASE_URL}/projects/${projectId}/grade-shells`, {
+      headers: getHeaders()
+    });
+    if (!res.ok) throw new Error('Failed to load grade shells');
     return res.json();
   }
 };

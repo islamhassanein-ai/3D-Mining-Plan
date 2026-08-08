@@ -5,6 +5,7 @@ import {
   dipDirectionFromStrike,
   isNum
 } from '../services/depth_planner.js';
+import { ApiClient } from '../services/api_client.js';
 
 // Drillhole Depth Planner.
 //
@@ -33,13 +34,18 @@ export class DepthPlannerPanel {
    * @param viewport   object returned by init3DViewport
    * @param sceneData  the payload from SceneLoader.load()
    */
-  constructor(container, viewport, sceneData) {
+  constructor(container, viewport, sceneData, options = {}) {
     this.container = typeof container === 'string' ? document.getElementById(container) : container;
     this.viewport = viewport;
     this.data = sceneData || {};
     this.renderer = viewport && viewport.depthPlanRenderer;
+    // Both optional: without them the planner still works as a scratchpad, it
+    // just cannot persist. The standalone HTML export has neither.
+    this.projectId = options.projectId || null;
+    this.onSaved = options.onSaved || null;
     this.result = null;
     this.debounce = null;
+    this.saving = false;
 
     this.trenches = this.groupTrenches(this.data.trenches || []);
     this.readings = (this.data.structural_readings || []).filter(r => isNum(r.dip) && isNum(r.strike));
@@ -398,6 +404,7 @@ export class DepthPlannerPanel {
       if (btn && !btn.disabled) this.applySuggestion(Number(btn.dataset.cand));
 
       if (e.target.closest('#dp-copy-pattern')) this.copyPatternCsv();
+      if (e.target.closest('#dp-save-pattern')) this.savePattern();
     });
 
     // Showing the grid inputs only when the grid is switched on keeps the
@@ -832,7 +839,15 @@ export class DepthPlannerPanel {
           <tbody>${rows}</tbody>
         </table>
       </div>
-      <button class="btn-small" id="dp-copy-pattern" style="width:100%;margin-top:8px;">Copy pattern as collar CSV</button>`;
+      <div class="dp-actions" style="margin:8px 0 0;">
+        <button class="btn-small" id="dp-copy-pattern">Copy as CSV</button>
+        ${this.projectId
+          ? `<button class="btn-small" id="dp-save-pattern" ${p.drillableHoles ? '' : 'disabled'}>
+               Save ${p.drillableHoles} holes to project
+             </button>`
+          : ''}
+      </div>
+      <div id="dp-save-status" class="dp-note"></div>`;
   }
 
   /**
@@ -860,6 +875,67 @@ export class DepthPlannerPanel {
       ].join(','));
     }
     return lines.join('\n');
+  }
+
+  /**
+   * Persist the pattern as planned holes, then reload the scene so they appear
+   * as real project data under the "Planned Boreholes" layer.
+   *
+   * Undrillable holes are never sent -- the panel already flags them, and
+   * saving a hole the same calculation just called impossible would put a
+   * contradiction in the database.
+   *
+   * A name clash with a DRILLED hole comes back as a 409 the server refuses in
+   * full. That is a decision for the geologist, not a retry, so the message is
+   * left on screen rather than flashed in a toast that disappears.
+   */
+  async savePattern() {
+    const p = this.result && this.result.pattern;
+    if (!p || !this.projectId || this.saving) return;
+
+    const holes = p.holes.filter(h => h.ok).map(h => ({
+      hole_id: h.id,
+      easting: h.collar.easting,
+      northing: h.collar.northing,
+      elevation: h.collar.elevation,
+      azimuth: h.azimuth,
+      dip: h.dip,
+      total_depth: h.eoh
+    }));
+    if (!holes.length) return;
+
+    const status = this.container.querySelector('#dp-save-status');
+    const button = this.container.querySelector('#dp-save-pattern');
+    this.saving = true;
+    if (button) { button.disabled = true; button.textContent = 'Saving…'; }
+    if (status) status.innerHTML = '';
+
+    try {
+      const result = await ApiClient.createPlannedHoles(this.projectId, holes);
+      const replacedNote = result.replaced
+        ? ` (${result.replaced} replaced an earlier plan of the same name)`
+        : '';
+      if (window.toast) {
+        window.toast.success(`${result.created} planned holes saved${replacedNote}`);
+      }
+      if (status) {
+        status.innerHTML =
+          `<span style="color:var(--accent-green,#22c55e)">Saved ${result.created} planned
+           holes${replacedNote}. They are now in the Planned Boreholes layer.</span>`;
+      }
+      // Reloading rebuilds the panel from fresh scene data, so this instance is
+      // on its way out -- do it last.
+      if (this.onSaved) await this.onSaved();
+    } catch (err) {
+      if (status) status.innerHTML = `<span class="dp-err">${escapeAttr(err.message)}</span>`;
+      if (window.toast) window.toast.error(err.message, { title: 'Could not save the pattern' });
+    } finally {
+      this.saving = false;
+      if (button && button.isConnected) {
+        button.disabled = false;
+        button.textContent = `Save ${p.drillableHoles} holes to project`;
+      }
+    }
   }
 
   copyPatternCsv() {

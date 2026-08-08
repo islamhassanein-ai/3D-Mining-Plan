@@ -204,6 +204,7 @@
                are different questions, and the second one buried the first. -->
           <button id="open-suggest-btn" class="btn-sidebar">Suggest Best Boreholes</button>
           <button id="open-qaqc-btn" class="btn-sidebar">QA/QC Reference Standards</button>
+          <button id="open-grade-shell-btn" class="btn-sidebar">Grade Domain Shells</button>
           <button id="open-share-btn" class="btn-sidebar">Share Project</button>
           <button id="open-history-btn" class="btn-sidebar">View Import History</button>
           <button id="open-export-btn" class="btn-sidebar">Export Project Data</button>
@@ -685,7 +686,12 @@
         // scene payload directly (trench samples, structural readings, collars)
         // rather than calling the API. Re-opening it must not rebuild it, or
         // the geologist loses whatever scenario they were part-way through.
-        depthPlanner = new window.DepthPlannerPanel('depth-planner-container', viewport3D, data);
+        depthPlanner = new window.DepthPlannerPanel('depth-planner-container', viewport3D, data, {
+          projectId: currentProject,
+          // Saved holes are project data now, so the whole scene reloads and
+          // they come back as real planned boreholes rather than a drawing.
+          onSaved: () => loadProjectScene(currentProject)
+        });
         makeDraggable(document.querySelector('#depth-planner-container .modal-card'));
         document.getElementById('open-planner-btn').onclick = () => {
           if (depthPlanner.isOpen()) depthPlanner.close();
@@ -698,6 +704,7 @@
           depthPlanner.openAtSuggestions();
         };
         document.getElementById('open-qaqc-btn').onclick = () => showQaqcModal();
+        document.getElementById('open-grade-shell-btn').onclick = () => showGradeShellModal();
         document.getElementById('open-share-btn').onclick = () => showShareModal();
         document.getElementById('open-history-btn').onclick = () => showHistoryModal();
         document.getElementById('open-export-btn').onclick = () => showExportModal();
@@ -1383,6 +1390,28 @@
       `;
 
       new window.QaqcPanel('qaqc-panel-mount', currentProject);
+    }
+
+    function showGradeShellModal() {
+      const container = document.getElementById('modal-container');
+      container.style.display = 'flex';
+      container.className = 'modal-overlay';
+
+      container.innerHTML = `
+        <div class="modal-card" style="max-width: 560px; max-height: 86vh; overflow-y: auto;">
+          <div class="modal-header">
+            <span>Grade Domain Shells</span>
+            <button class="modal-close" onclick="document.getElementById('modal-container').style.display='none'">&times;</button>
+          </div>
+          <div id="grade-shell-panel-mount"></div>
+        </div>
+      `;
+
+      new window.GradeShellPanel('grade-shell-panel-mount', currentProject, {
+        // Reload the scene so a newly generated shell appears without a page
+        // refresh; it arrives through the normal wireframes list.
+        onSceneChanged: () => (typeof loadScene === 'function' ? loadScene() : null),
+      });
     }
 
     function showSupplementaryModal() {
