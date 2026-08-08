@@ -71,6 +71,72 @@ any tonnage figure; any contained-metal figure presented as an estimate.
 Volume in cubic metres and metal *capture fraction* are geometry and validation
 statistics and are allowed — they describe the shell, not the deposit.
 
+### D6. Face Channel is geometry-only (set 2026-08-08)
+
+**FC sample weight is `0.0`.** Face channels define where mineralisation
+outcrops; they cast no vote on interpolated grade.
+
+The basis: FC reads **23.08×** the drill population length-weighted, with 62% of
+FC composites above 0.3 g/t against 7% of DDH. These channels are cut on exposed
+mineralised faces — a population selected for grade by the act of sampling it.
+
+**Consequence to carry into every report on this deposit.** With FC excluded from
+grade, only **51 of 435 composites** sit above 0.3 g/t (18 DDH + 33 TR). Adel's
+drilling barely intersects mineralisation above cut-off: 18 composites from 12
+drilled holes. Any shell built here is thin on drill support and is substantially
+a *surface-sample* object. That is a statement about the drill coverage, not about
+the modelling.
+
+### D7. Search orientation is a required input (set 2026-08-08)
+
+**No defaults for `strike_azimuth`, `dip`, or the three ranges.** Every run states
+them deliberately. A shell built on an unnoticed default orientation looks
+plausible and is rotated off the structure.
+
+**Still needed before T005 can run: the actual Adel strike, dip, and the three
+search ranges.** These are a geological input and are not derivable from the
+database — deriving an azimuth from how the trench lines happen to be laid out
+would be an inference from survey convenience, not a structural measurement.
+
+### D8. Cut-off is chosen from evidence, not set in advance (set 2026-08-08)
+
+**No default threshold is fixed.** T003 builds the log-probability plot, the
+metal-capture curve, and contact analysis against the Adel distribution first;
+the threshold is chosen from those. The candidate list passed to
+`metal_capture_curve` describes the *shape* of the curve and carries no
+recommendation.
+
+**The evidence is now built.** `venv/Scripts/python.exe -m
+backend.analyze_threshold "Adel" --types DDH,TR` — the D6 modelling population,
+n=435:
+
+| cut-off | n above | % of length | **% of metal** | mean above |
+|---|---|---|---|---|
+| 0.10 | 97 | 22.0% | **94.5%** | 1.406 |
+| 0.15 | 80 | 18.0% | **93.1%** | 1.698 |
+| 0.20 | 70 | 15.7% | **91.9%** | 1.916 |
+| **0.30** | 51 | 11.4% | **88.9%** | 2.545 |
+| 0.50 | 38 | 8.5% | 85.4% | 3.279 |
+| 1.00 | 26 | 5.8% | 79.6% | 4.470 |
+
+**The log-probability curve breaks at roughly 0.10–0.20 g/t, not 0.30.** Grade
+is flat at 0.001–0.05 through the first four-fifths of the population, then
+climbs steeply from about cumulative probability 0.82 (0.16 g/t) onward: 0.25 at
+0.87, 0.57 at 0.92, 2.08 at 0.97. That is a two-population signature — roughly
+82–85% background, 15–18% mineralised — and the break sits **below** the 0.3
+that was the starting assumption.
+
+Against the ≥90% metal-capture guideline, 0.20 clears it (91.9%) and 0.30 does
+not (88.9%). The cost of 0.20 over 0.30 is 4.3 percentage points more ground.
+
+**Caveat on the contact analysis.** It shows a very sharp step — inside 2.545
+against 0.060 immediately outside at a 0.3 threshold — but that is partly
+self-fulfilling, because membership of each side is *defined* by the grade being
+compared. The informative part is the outside trend: grades in the nearest 10 m
+run 0.039/0.060/0.088 (at thresholds 0.2/0.3/0.5) against 0.02–0.03 further out,
+so there is a mild halo but no broad gradational margin. A hard boundary is
+reasonable.
+
 ### D5. Repeat samples on the same metre are averaged (set 2026-08-08)
 
 **Where more than one sample represents the same metre of the same trench, they
@@ -443,10 +509,11 @@ every run so the pooling stays visible in output.
 | D2 | IDW now, replaceable | T005 | **Decided** |
 | D3 | Not a resource estimate | all | **Decided** |
 | D4 | Implementer boundary | all | **Decided** |
-| Q1 | Surface-sample influence | T005, T009 | **Open** — two decisions now (FC and TR), evidence ready |
-| Q2 | Cut-off default + sensitivity set | T003, T008, T009 | **Open** |
+| Q1a | **FC** influence | — | **Decided (D6)** — geometry only, weight `0.0` |
+| Q1b | **TR** influence | T005, T009 | **Referred to the expert team** — see [briefing](analysis/TR_weighting_briefing.md) |
+| Q2 | Cut-off | T003 unblocked | **Decided (D8)** — no default; choose from T003's evidence |
 | Q3 | Minimum mining width | T006 | **Open** |
-| Q4 | Structural orientation inputs | T005, T008, T009 | **Open** |
+| Q4 | Structural orientation inputs | T005 needs values | **Decided (D7)** — required, no defaults. Awaiting Adel's strike/dip/ranges |
 | Q5 | Trench sample geometry | — | **Resolved 2026-08-08**: stored XYZ is the authoritative sample **midpoint**. Cleanup in [T010](tasks/T010_trench_geometry_decision.md) |
 | Q6 | RC pooled with diamond core | — | **Not applicable** — Adel has no RC. Labelling matter only |
 

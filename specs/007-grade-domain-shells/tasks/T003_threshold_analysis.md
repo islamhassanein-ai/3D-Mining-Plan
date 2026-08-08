@@ -8,21 +8,13 @@
 | **Priority** | P0 |
 | **Dependencies** | T001 |
 | **Complexity** | Medium |
-| **Status** | **BLOCKED — Q2** |
+| **Status** | **DONE** |
 
-> ## Blocked: do not implement yet
->
-> **Q2 (cut-off default and sensitivity set)** in
-> [`../OPEN_QUESTIONS.md`](../OPEN_QUESTIONS.md) is unresolved. The default
-> threshold list written below (`[0.1, 0.2, 0.3, 0.5, 1.0, 2.0, 5.0]`) is a
-> placeholder for the capture curve's shape and has not been approved, and the
-> single default generation threshold — 0.3 g/t Au, pending confirmation — is
-> not yet fixed.
->
-> Every non-default part of this task is unaffected: the Hazen plotting
-> positions, the capture arithmetic, and the contact analysis are all
-> independent of which thresholds are chosen. If the question is answered,
-> update the default here and proceed.
+> **Unblocked by D8**: no cut-off is set in advance. This task builds the
+> evidence — log-probability, metal capture, contact analysis — and the
+> threshold is chosen from it afterwards. `metal_capture_curve` takes its
+> candidate thresholds as a required argument and carries **no default and no
+> recommendation**; the list describes the shape of the curve only.
 
 ---
 
