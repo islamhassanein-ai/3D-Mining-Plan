@@ -184,9 +184,31 @@ export class DepthPlannerPanel {
             <div><label>Collar Z &plusmn;m</label><input type="number" step="any" id="dp-z-delta" class="dp-input" value="2"></div>
           </div>
 
+          <div class="dp-section-title">5 &nbsp;Drill pattern</div>
+          <div class="dp-row">
+            <label class="dp-check">
+              <input type="checkbox" id="dp-pattern-on"> Plan a grid of holes, not just one
+            </label>
+          </div>
+          <div id="dp-pattern-inputs" style="display:none;">
+            <div class="dp-row dp-row-2">
+              <div><label>Spacing along strike (m)</label><input type="number" step="any" min="1" id="dp-sp-strike" class="dp-input" value="20"></div>
+              <div><label>Spacing down dip (m)</label><input type="number" step="any" min="1" id="dp-sp-dip" class="dp-input" value="20"></div>
+            </div>
+            <div class="dp-row dp-row-3">
+              <div><label>Holes along strike</label><input type="number" step="1" min="1" id="dp-n-strike" class="dp-input" value="3"></div>
+              <div><label>Rows down dip</label><input type="number" step="1" min="1" id="dp-n-dip" class="dp-input" value="2"></div>
+              <div><label>Collar pad RL</label><input type="number" step="any" id="dp-pad-rl" class="dp-input"></div>
+            </div>
+            <div class="dp-row">
+              <label>Hole ID prefix</label>
+              <input type="text" id="dp-prefix" class="dp-input" value="PLAN">
+            </div>
+          </div>
+
           <div id="dp-results"></div>
 
-          <div class="dp-section-title">6 &nbsp;Post-drill calibration</div>
+          <div class="dp-section-title">7 &nbsp;Post-drill calibration</div>
           <div class="dp-row dp-row-2">
             <div><label>Actual intersection (m)</label><input type="number" step="any" id="dp-observed" class="dp-input" placeholder="e.g. 45"></div>
             <div><label>&nbsp;</label><button class="btn-small dp-fill" id="dp-clear-observed">Clear</button></div>
@@ -275,6 +297,12 @@ export class DepthPlannerPanel {
         30%      { background: rgba(212,175,55,0.28); }
       }
       .dp-flash { animation: dpFlash 1.1s ease-out 1; border-radius: 4px; }
+      .dp-check {
+        display: flex; align-items: center; gap: 7px; cursor: pointer;
+        font-size: 11.5px; color: var(--text-main, #e8edf5); margin-bottom: 0;
+        text-transform: none; letter-spacing: 0;
+      }
+      .dp-check input { width: 14px; height: 14px; accent-color: var(--gold, #d4af37); cursor: pointer; }
       @media (prefers-reduced-motion: reduce) { .dp-flash { animation: none; } }
       .dp-actions { display: flex; gap: 6px; margin: 14px 0 4px; }
       .dp-actions .btn-small { flex: 1; }
@@ -368,7 +396,17 @@ export class DepthPlannerPanel {
     this.resultsEl.addEventListener('click', (e) => {
       const btn = e.target.closest('.dp-apply');
       if (btn && !btn.disabled) this.applySuggestion(Number(btn.dataset.cand));
+
+      if (e.target.closest('#dp-copy-pattern')) this.copyPatternCsv();
     });
+
+    // Showing the grid inputs only when the grid is switched on keeps the
+    // single-hole case -- still the common one -- from growing six more fields.
+    const patternToggle = q('#dp-pattern-on');
+    patternToggle.onchange = () => {
+      q('#dp-pattern-inputs').style.display = patternToggle.checked ? 'block' : 'none';
+      this.recompute();
+    };
 
     // Every input recomputes, debounced, so the 3D tracks typing without
     // rebuilding geometry on each keystroke.
@@ -545,7 +583,16 @@ export class DepthPlannerPanel {
       options: {
         dipDelta: orDefault(num(q('#dp-dip-delta')), 5),
         dipDirDelta: orDefault(num(q('#dp-dd-delta')), 10),
-        collarZDelta: orDefault(num(q('#dp-z-delta')), 2)
+        collarZDelta: orDefault(num(q('#dp-z-delta')), 2),
+        pattern: q('#dp-pattern-on').checked ? {
+          spacingStrike: orDefault(num(q('#dp-sp-strike')), 20),
+          spacingDip: orDefault(num(q('#dp-sp-dip')), 20),
+          countStrike: orDefault(num(q('#dp-n-strike')), 3),
+          countDip: orDefault(num(q('#dp-n-dip')), 2),
+          // Blank pad RL means "same bench as the reference collar".
+          collarElevation: orDefault(num(q('#dp-pad-rl')), collar.elevation),
+          holePrefix: (q('#dp-prefix').value || 'PLAN').trim()
+        } : null
       }
     });
 
@@ -572,7 +619,7 @@ export class DepthPlannerPanel {
 
     if (miss) {
       this.resultsEl.innerHTML = `
-        <div class="dp-section-title">5 &nbsp;Result</div>
+        <div class="dp-section-title">6 &nbsp;Result</div>
         <div class="dp-note dp-err">${miss}</div>
         ${this.suggestionsHtml(r)}`;
       this.calibrationEl.innerHTML = '';
@@ -616,7 +663,7 @@ export class DepthPlannerPanel {
     const driver = topDriver(env.driver);
 
     this.resultsEl.innerHTML = `
-      <div class="dp-section-title">5 &nbsp;Result</div>
+      <div class="dp-section-title">6 &nbsp;Result</div>
 
       <div class="dp-headline">
         <div>Target <span class="dp-big">${r.top.depth.toFixed(1)} – ${r.base ? r.base.depth.toFixed(1) : '?'} m</span></div>
@@ -645,6 +692,8 @@ export class DepthPlannerPanel {
       </div>
 
       ${this.suggestionsHtml(r)}
+
+      ${this.patternHtml(r)}
 
       ${projected.length ? `
         <div class="dp-section-title" style="margin-top:12px;">Trench metre &rarr; downhole depth</div>
@@ -722,6 +771,107 @@ export class DepthPlannerPanel {
           <tbody>${rows}</tbody>
         </table>
       </div>`;
+  }
+
+  /**
+   * The whole programme: every hole in the grid, what it costs, and where the
+   * layout breaks down.
+   *
+   * Totals are the point. A geologist choosing between 20x20 and 40x40 is
+   * really choosing between two budgets, and the metre count is the number that
+   * decides it -- so it sits at the top, not buried under the table.
+   */
+  patternHtml(r) {
+    const p = r.pattern;
+    if (!p) return '';
+
+    if (!p.totalHoles) {
+      return `<div class="dp-section-title" style="margin-top:12px;">Drill pattern</div>
+              <div class="dp-note">Nothing to lay out — check the spacing and counts.</div>`;
+    }
+
+    const rows = p.holes.map(h => `
+      <tr class="${h.ok ? '' : 'dp-undrillable'}">
+        <td>${h.id}</td>
+        <td class="dp-num">${h.collar.easting.toFixed(1)}</td>
+        <td class="dp-num">${h.collar.northing.toFixed(1)}</td>
+        <td class="dp-num">${h.depthToTop.toFixed(0)}</td>
+        <td class="dp-num">${h.eoh}</td>
+        <td class="dp-num">${h.ok ? '' : `<span class="dp-warn" title="${escapeAttr(h.note)}">!</span>`}</td>
+      </tr>`).join('');
+
+    const warn = p.warnings.length
+      ? `<div class="dp-note dp-warn">${p.warnings.join(' ')}</div>`
+      : '';
+
+    return `
+      <div class="dp-section-title" id="dp-pattern-out" style="margin-top:12px;">Drill pattern</div>
+
+      <div class="dp-headline">
+        <div><span class="dp-big">${p.drillableHoles}</span> holes &nbsp;·&nbsp;
+             <span class="dp-big">${Math.round(p.totalMetres)} m</span> total</div>
+        <div>${p.cols} along strike &times; ${p.rows} down dip,
+             at ${p.spacingStrike} &times; ${p.spacingDip} m on the zone plane</div>
+        <div>Deepest hole <b>${p.deepestHole ?? '—'} m</b> &nbsp;·&nbsp;
+             collars on a pad at <b>${p.collarElevation.toFixed(1)} m</b> RL</div>
+      </div>
+      ${warn}
+      <div class="dp-note">
+        Spacing is measured <b>on the zone plane</b>, not on the ground — that is what
+        controls how much of the zone your data actually informs. Collar positions are
+        derived by running each hole back to the pad RL, so
+        <b>reconcile them against topography before drilling.</b>
+      </div>
+
+      <div class="dp-scroll">
+        <table class="dp-table">
+          <thead><tr>
+            <th>Hole</th><th class="dp-num">Easting</th><th class="dp-num">Northing</th>
+            <th class="dp-num">Zone</th><th class="dp-num">EOH</th><th></th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+      <button class="btn-small" id="dp-copy-pattern" style="width:100%;margin-top:8px;">Copy pattern as collar CSV</button>`;
+  }
+
+  /**
+   * The pattern in the same shape the project's own collar importer reads, so a
+   * programme can go straight back in as planned holes without retyping.
+   */
+  patternCsv() {
+    const p = this.result && this.result.pattern;
+    if (!p) return '';
+    const lines = ['hole_id,easting,northing,elevation,total_depth,azimuth,dip,hole_type,hole_status'];
+    for (const h of p.holes) {
+      if (!h.ok) continue;
+      lines.push([
+        h.id,
+        h.collar.easting.toFixed(3),
+        h.collar.northing.toFixed(3),
+        h.collar.elevation.toFixed(3),
+        h.eoh,
+        h.azimuth,
+        // Negative = below horizontal, matching the signed convention the
+        // desurvey expects (backend/src/services/dip_convention.py).
+        -Math.abs(h.dip),
+        'DD',
+        'planned'
+      ].join(','));
+    }
+    return lines.join('\n');
+  }
+
+  copyPatternCsv() {
+    const csv = this.patternCsv();
+    if (!csv) return;
+    navigator.clipboard.writeText(csv).then(
+      () => {
+        const n = this.result.pattern.drillableHoles;
+        if (window.toast) window.toast.success(`${n} planned collars copied as CSV`);
+      },
+      () => { if (window.toast) window.toast.error('Could not copy to clipboard'); }
+    );
   }
 
   /** Write a suggested orientation into the hole fields and recompute. */

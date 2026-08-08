@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { makeLabelSprite, updateBillboardScale } from './label_sprite.js';
-import { planeNormal, holeDirection, toVec } from '../services/depth_planner.js';
+import {
+  planeNormal, holeDirection, toVec, strikeVector, downDipVector
+} from '../services/depth_planner.js';
 
 // The picture that goes with the Depth Planner: a proposed hole punching
 // through a dipping zone, with the intersection depths called out on the trace.
@@ -23,23 +25,6 @@ const ENVELOPE_COLOR = 0xfbbf24;  // uncertainty sleeve
 /** (e, n, u) -> three.js (X = E, Y = Up, Z = N). */
 function toThree(v) {
   return new THREE.Vector3(v.e, v.u, v.n);
-}
-
-/** Unit vector along strike (horizontal, in the plane). */
-function strikeVector(dipDirDeg) {
-  const a = dipDirDeg * Math.PI / 180;
-  return { e: Math.cos(a), n: -Math.sin(a), u: 0 };
-}
-
-/** Unit vector down the dip (in the plane, steepest descent). */
-function downDipVector(dipDeg, dipDirDeg) {
-  const d = dipDeg * Math.PI / 180;
-  const a = dipDirDeg * Math.PI / 180;
-  return {
-    e: Math.sin(a) * Math.cos(d),
-    n: Math.cos(a) * Math.cos(d),
-    u: -Math.sin(d)
-  };
 }
 
 export class DepthPlanRenderer {
@@ -79,8 +64,59 @@ export class DepthPlanRenderer {
 
     this._buildZoneSlab(plan, nrm, halfSize);
     this._buildUncertaintyBand(plan, collar, dir);
+    this._buildPatternHoles(plan, dir);
     this._buildPlannedHole(plan, collar, dir);
     this._buildDepthMarkers(plan, collar, dir);
+  }
+
+  /**
+   * The rest of the programme: every other hole in the grid.
+   *
+   * Drawn thinner and dimmer than the reference hole, and with a dot at each
+   * target rather than a labelled ring. A twelve-hole pattern with twelve sets
+   * of call-outs is unreadable, and the individual depths are in the table --
+   * what the 3D view has to show is the SHAPE of the programme: how the fan
+   * spreads along strike and how far down-dip it steps.
+   */
+  _buildPatternHoles(plan, dir) {
+    const pattern = plan.pattern;
+    if (!pattern || !pattern.holes.length) return;
+
+    const lineMaterial = new THREE.LineDashedMaterial({
+      color: PLANNED_COLOR, dashSize: 2.5, gapSize: 2.5, transparent: true, opacity: 0.5
+    });
+    const badMaterial = new THREE.LineDashedMaterial({
+      color: 0xef4444, dashSize: 2.5, gapSize: 2.5, transparent: true, opacity: 0.5
+    });
+    const targetMaterial = new THREE.MeshBasicMaterial({
+      color: MARKER_COLOR, transparent: true, opacity: 0.85
+    });
+
+    for (const h of pattern.holes) {
+      // The reference hole is drawn in full by _buildPlannedHole; drawing it
+      // twice would double-darken one hole in the middle of the fan.
+      if (h.col === (pattern.cols - 1) / 2 && h.row === 0) continue;
+
+      const start = toThree({ e: h.collar.easting, n: h.collar.northing, u: h.collar.elevation });
+      const end = toThree({
+        e: h.collar.easting + dir.e * h.eoh,
+        n: h.collar.northing + dir.n * h.eoh,
+        u: h.collar.elevation + dir.u * h.eoh
+      });
+
+      const line = new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints([start, end]),
+        h.ok ? lineMaterial : badMaterial
+      );
+      line.computeLineDistances();
+      line.userData = { type: 'depth_plan_pattern', hole_id: h.id, eoh: h.eoh };
+      this.group.add(line);
+
+      const dot = new THREE.Mesh(new THREE.SphereGeometry(1.1, 10, 8), targetMaterial);
+      dot.position.copy(toThree(h.target));
+      dot.userData = { type: 'depth_plan_pattern_target', hole_id: h.id };
+      this.group.add(dot);
+    }
   }
 
   /**

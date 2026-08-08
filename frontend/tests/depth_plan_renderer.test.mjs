@@ -206,6 +206,53 @@ test('rendering null clears the scene but keeps the group attached', () => {
   assert.ok(scene.children.includes(renderer.group), 'the group stays for the layer toggle');
 });
 
+test('a drill pattern draws every hole except the reference one twice', () => {
+  const scene = new THREE.Scene();
+  const renderer = new DepthPlanRenderer(scene);
+
+  const plan = computePlan({
+    collar: COLLAR, hole: HOLE, plane: PLANE, top: TOP, base: BASE,
+    options: { pattern: { spacingStrike: 20, spacingDip: 20, countStrike: 3, countDip: 2 } }
+  });
+  plan.topAnchor = TOP;
+  plan.baseAnchor = BASE;
+  renderer.render(plan);
+
+  assert.equal(plan.pattern.totalHoles, 6);
+
+  const traces = renderer.group.children.filter(c => c.userData.type === 'depth_plan_pattern');
+  const targets = renderer.group.children.filter(c => c.userData.type === 'depth_plan_pattern_target');
+
+  // Five, not six: the centre hole of the first row IS the reference hole and
+  // is already drawn in full, so drawing it again would double-darken one hole
+  // in the middle of the fan.
+  assert.equal(traces.length, 5, 'reference hole is not drawn twice');
+  assert.equal(targets.length, 5);
+
+  const ids = traces.map(t => t.userData.hole_id);
+  assert.equal(new Set(ids).size, 5, 'each pattern hole appears once');
+  assert.ok(!ids.includes('PLAN_01B'), 'the centre of row 1 is the reference hole');
+
+  for (const t of traces) {
+    assert.ok(t.material.isLineDashedMaterial, 'proposals are dashed');
+    assert.ok(t.geometry.getAttribute('lineDistance'), 'dashes need line distances');
+  }
+
+  // Target dots must sit on the plane, at the intersections the table quotes.
+  const n = planeNormal(PLANE.dip, PLANE.dipDirection);
+  for (const dot of targets) {
+    const d = (dot.position.x - TOP.easting) * n.e
+            + (dot.position.z - TOP.northing) * n.n
+            + (dot.position.y - TOP.elevation) * n.u;
+    assert.ok(Math.abs(d) < 0.3, `${dot.userData.hole_id} target is ${d.toFixed(2)} m off the plane`);
+  }
+});
+
+test('a plan with no pattern draws no pattern geometry', () => {
+  const { renderer } = render();
+  assert.equal(renderer.group.children.filter(c => c.userData.type === 'depth_plan_pattern').length, 0);
+});
+
 test('setVisible drives the whole layer', () => {
   const { renderer } = render();
   renderer.setVisible(false);

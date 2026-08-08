@@ -20,6 +20,7 @@ import {
   computePlan,
   perpendicularOrientation,
   suggestHoles,
+  generateDrillPattern,
   dot
 } from '../src/services/depth_planner.js';
 
@@ -507,6 +508,149 @@ test('computePlan attaches suggestions, and honours opting out', () => {
     options: { suggest: false }
   });
   assert.equal(without.suggestions, null);
+});
+
+// --- drill patterns ---------------------------------------------------------
+
+const PLAN = planZone({ collar: COLLAR, hole: HOLE, plane: MEAN, top: TOP, base: BASE });
+const ORIGIN = {
+  easting: PLAN.top.point.e, northing: PLAN.top.point.n, elevation: PLAN.top.point.u
+};
+
+const pattern = (over = {}) => generateDrillPattern({
+  origin: ORIGIN, baseAnchor: BASE, plane: MEAN, hole: HOLE,
+  collarElevation: 313, spacingStrike: 20, spacingDip: 20,
+  countStrike: 3, countDip: 2, ...over
+});
+
+test('a 3 x 2 pattern produces six holes on a flat collar pad', () => {
+  const p = pattern();
+  assert.equal(p.totalHoles, 6);
+  assert.equal(p.rows, 2);
+  assert.equal(p.cols, 3);
+  for (const h of p.holes) {
+    near(h.collar.elevation, 313, 1e-9, `${h.id} sits on the pad`);
+    assert.ok(h.depthToTop > 0, `${h.id} drills downward to its target`);
+  }
+});
+
+test('spacing is measured on the zone plane, not on the ground', () => {
+  const p = pattern();
+  const at = (col, row) => p.holes.find(h => h.col === col && h.row === row);
+  const dist = (a, b) => Math.hypot(
+    a.target.e - b.target.e, a.target.n - b.target.n, a.target.u - b.target.u
+  );
+
+  // Neighbours along strike are exactly one strike spacing apart...
+  near(dist(at(0, 0), at(1, 0)), 20, 1e-6, 'along strike');
+  near(dist(at(1, 0), at(2, 0)), 20, 1e-6, 'along strike again');
+  // ...and down dip, one dip spacing.
+  near(dist(at(1, 0), at(1, 1)), 20, 1e-6, 'down dip');
+
+  // Every target must actually lie ON the plane, or "spacing on the plane"
+  // is a fiction. Distance from the plane through the origin must be zero.
+  const n = planeNormal(MEAN.dip, MEAN.dipDirection);
+  for (const h of p.holes) {
+    const d = (h.target.e - ORIGIN.easting) * n.e
+            + (h.target.n - ORIGIN.northing) * n.n
+            + (h.target.u - ORIGIN.elevation) * n.u;
+    near(d, 0, 1e-6, `${h.id} lies on the zone plane`);
+  }
+});
+
+test('the pattern steps down-dip only, never up into the outcrop', () => {
+  const p = pattern();
+  const row0 = p.holes.filter(h => h.row === 0);
+  const row1 = p.holes.filter(h => h.row === 1);
+  const avg = (list) => list.reduce((s, h) => s + h.target.u, 0) / list.length;
+  assert.ok(avg(row1) < avg(row0), 'the second row is deeper, not shallower');
+
+  // And deeper targets mean longer holes.
+  const mid0 = p.holes.find(h => h.col === 1 && h.row === 0);
+  const mid1 = p.holes.find(h => h.col === 1 && h.row === 1);
+  assert.ok(mid1.depthToTop > mid0.depthToTop, 'down-dip holes are longer');
+});
+
+test('the strike fan is centred, so the reference hole keeps its place', () => {
+  const p = pattern();
+  const centre = p.holes.find(h => h.col === 1 && h.row === 0);
+  // Middle column, first row = the intersection the pattern was anchored to.
+  near(centre.alongStrike, 0, 1e-9, 'centre column has no strike offset');
+  near(centre.target.e, ORIGIN.easting, 1e-6, 'easting');
+  near(centre.target.n, ORIGIN.northing, 1e-6, 'northing');
+  near(centre.target.u, ORIGIN.elevation, 1e-6, 'elevation');
+  near(centre.depthToTop, PLAN.top.depth, 1e-6, 'and it reproduces the original hole');
+
+  const offsets = p.holes.filter(h => h.row === 0).map(h => h.alongStrike).sort((a, b) => a - b);
+  assert.deepEqual(offsets, [-20, 0, 20]);
+});
+
+test('an even column count straddles the centre line', () => {
+  const p = pattern({ countStrike: 2, countDip: 1 });
+  const offsets = p.holes.map(h => h.alongStrike).sort((a, b) => a - b);
+  assert.deepEqual(offsets, [-10, 10]);
+});
+
+test('each hole gets a unique id, and totals add up', () => {
+  const p = pattern();
+  const ids = p.holes.map(h => h.id);
+  assert.equal(new Set(ids).size, ids.length, 'ids are unique');
+  assert.ok(ids.includes('PLAN_01A') && ids.includes('PLAN_02C'));
+
+  const expected = p.holes.filter(h => h.ok).reduce((s, h) => s + h.eoh, 0);
+  assert.equal(p.totalMetres, expected, 'total metres is the sum of drillable EOHs');
+  assert.ok(p.totalMetres > 0);
+  assert.equal(p.deepestHole, Math.max(...p.holes.filter(h => h.ok).map(h => h.eoh)));
+});
+
+test('every hole stops below the zone it was drilled for', () => {
+  const p = pattern();
+  for (const h of p.holes) {
+    assert.ok(Number.isFinite(h.depthToBase), `${h.id} has a base intersection`);
+    assert.ok(h.eoh > h.depthToBase, `${h.id} EOH ${h.eoh} must clear its base ${h.depthToBase}`);
+    // Core length stays close to the true thickness for this near-normal cut.
+    assert.ok(h.coreLength > 8 && h.coreLength < 9.5, `${h.id} core ${h.coreLength}`);
+  }
+});
+
+test('holes that break the depth budget are flagged, not silently included', () => {
+  const p = pattern({ countDip: 6, options: { maxEoh: 100 } });
+  const bad = p.holes.filter(h => !h.ok);
+  assert.ok(bad.length > 0, 'deep down-dip holes should exceed a 100 m budget');
+  for (const h of bad) assert.ok(/exceeds/.test(h.note), `expected a reason: "${h.note}"`);
+  assert.ok(p.warnings.length > 0, 'and the pattern says so overall');
+  // Excluded from the metres total, so a budget figure is never inflated by
+  // holes the same call just declared undrillable.
+  const okMetres = p.holes.filter(h => h.ok).reduce((s, h) => s + h.eoh, 0);
+  assert.equal(p.totalMetres, okMetres);
+  assert.equal(p.drillableHoles, p.holes.filter(h => h.ok).length);
+});
+
+test('tightening the spacing raises hole count and metres together', () => {
+  const coarse = pattern({ spacingStrike: 40, spacingDip: 40, countStrike: 2, countDip: 2 });
+  const fine = pattern({ spacingStrike: 20, spacingDip: 20, countStrike: 4, countDip: 4 });
+  assert.ok(fine.totalHoles > coarse.totalHoles);
+  assert.ok(fine.totalMetres > coarse.totalMetres);
+});
+
+test('a horizontal hole can never surface, so no pattern is returned', () => {
+  assert.equal(pattern({ hole: { azimuth: 30, dip: 0 } }), null);
+});
+
+test('computePlan builds a pattern only when asked', () => {
+  const off = computePlan({ collar: COLLAR, hole: HOLE, plane: MEAN, top: TOP, base: BASE });
+  assert.equal(off.pattern, null);
+
+  const on = computePlan({
+    collar: COLLAR, hole: HOLE, plane: MEAN, top: TOP, base: BASE,
+    options: { pattern: { spacingStrike: 25, spacingDip: 25, countStrike: 3, countDip: 2 } }
+  });
+  assert.ok(on.pattern);
+  assert.equal(on.pattern.totalHoles, 6);
+  assert.equal(on.pattern.spacingStrike, 25);
+  // Anchored to where this very hole cuts the zone.
+  const centre = on.pattern.holes.find(h => h.col === 1 && h.row === 0);
+  near(centre.depthToTop, on.top.depth, 1e-6, 'centre hole is the reference hole');
 });
 
 test('computePlan skips calibration when no depth was observed', () => {

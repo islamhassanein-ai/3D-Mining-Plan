@@ -719,6 +719,158 @@ export function suggestHoles({ collar, plane, top, base, currentAzimuth = null, 
   };
 }
 
+/** Unit vector along strike: horizontal, lying in the plane. */
+export function strikeVector(dipDirDeg) {
+  const a = num(dipDirDeg) * DEG;
+  return { e: Math.cos(a), n: -Math.sin(a), u: 0 };
+}
+
+/** Unit vector straight down the dip: steepest descent within the plane. */
+export function downDipVector(dipDeg, dipDirDeg) {
+  const d = num(dipDeg) * DEG;
+  const a = num(dipDirDeg) * DEG;
+  return {
+    e: Math.sin(a) * Math.cos(d),
+    n: Math.cos(a) * Math.cos(d),
+    u: -Math.sin(d)
+  };
+}
+
+/**
+ * A grid of holes testing one zone -- "20 by 20" and a hole count, rather than
+ * one hole at a time.
+ *
+ * The grid is laid out ON THE ZONE PLANE, not on the ground. That is the whole
+ * point: drill spacing is a statement about how far apart the INTERSECTIONS are,
+ * because that is what controls how much of the zone is actually informed by
+ * data. Spacing collars evenly on the surface instead would bunch the
+ * intersections up or fan them out wherever the terrain or the dip changed, and
+ * "20 m spacing" would stop meaning anything. So targets are stepped along
+ * strike and down dip across the plane, and each collar is then back-calculated
+ * by running its hole in reverse until it surfaces.
+ *
+ * Collars land on a flat pad at `collarElevation`. Real ground is not flat, and
+ * every metre of error there moves that hole's intersection by `dL/dCz` (see
+ * elevationSensitivity) -- so each hole reports the collar RL it assumes, and
+ * the caller is expected to reconcile it against topography before drilling.
+ *
+ * @param origin  a point ON the top plane to anchor the grid -- normally the
+ *                intersection of the reference hole, so the pattern grows out
+ *                of the hole already planned.
+ */
+export function generateDrillPattern({
+  origin,
+  baseAnchor = null,
+  plane,
+  hole,
+  collarElevation,
+  spacingStrike = 20,
+  spacingDip = 20,
+  countStrike = 3,
+  countDip = 2,
+  holePrefix = 'PLAN',
+  options = {}
+}) {
+  const eohMargin = options.eohMargin ?? 15;
+  const maxEoh = options.maxEoh ?? 300;
+
+  const cols = Math.max(1, Math.round(num(countStrike) || 1));
+  const rows = Math.max(1, Math.round(num(countDip) || 1));
+  const dStrike = num(spacingStrike);
+  const dDip = num(spacingDip);
+  const collarZ = num(collarElevation);
+
+  if (!Number.isFinite(dStrike) || !Number.isFinite(dDip) ||
+      !Number.isFinite(collarZ) || !origin) return null;
+
+  const dir = holeDirection(hole.dip, hole.azimuth);
+  if (Math.abs(dir.u) < PARALLEL_EPS) return null;   // horizontal hole never surfaces
+
+  const s = strikeVector(plane.dipDirection);
+  const dd = downDipVector(plane.dip, plane.dipDirection);
+  const start = toVec(origin);
+
+  // Centre the fan along strike so the pattern straddles the reference section,
+  // but run down-dip in one direction only -- up-dip from the first intersection
+  // is the outcrop, which is already mapped and needs no drilling.
+  const colOffset = (cols - 1) / 2;
+
+  const holes = [];
+  const warnings = [];
+
+  for (let j = 0; j < rows; j++) {
+    for (let i = 0; i < cols; i++) {
+      const alongStrike = (i - colOffset) * dStrike;
+      const downDip = j * dDip;
+
+      const target = {
+        e: start.e + s.e * alongStrike + dd.e * downDip,
+        n: start.n + s.n * alongStrike + dd.n * downDip,
+        u: start.u + s.u * alongStrike + dd.u * downDip
+      };
+
+      // Run the hole backwards from the target until it reaches the pad RL.
+      // Exact, not iterative: elevation is linear along a straight hole.
+      const depthToTop = (target.u - collarZ) / dir.u;
+
+      const collar = {
+        easting: target.e - dir.e * depthToTop,
+        northing: target.n - dir.n * depthToTop,
+        elevation: collarZ
+      };
+
+      const baseHit = baseAnchor
+        ? intersectDepth({ collar, hole, anchor: baseAnchor, plane })
+        : null;
+      const depthToBase = baseHit && Number.isFinite(baseHit.depth) ? baseHit.depth : null;
+
+      const deepest = depthToBase !== null ? Math.max(depthToTop, depthToBase) : depthToTop;
+      const eoh = Math.round(deepest + eohMargin);
+
+      const problems = [];
+      if (depthToTop <= 0) problems.push('target is above the collar pad');
+      if (eoh > maxEoh) problems.push(`EOH ${eoh} m exceeds the ${maxEoh} m budget`);
+
+      holes.push({
+        id: `${holePrefix}_${String(j + 1).padStart(2, '0')}${String.fromCharCode(65 + i)}`,
+        row: j,
+        col: i,
+        alongStrike,
+        downDip,
+        collar,
+        target,
+        azimuth: hole.azimuth,
+        dip: Math.abs(hole.dip),
+        depthToTop,
+        depthToBase,
+        coreLength: depthToBase !== null ? Math.abs(depthToBase - depthToTop) : null,
+        eoh,
+        ok: problems.length === 0,
+        note: problems.join('; ')
+      });
+    }
+  }
+
+  const usable = holes.filter(h => h.ok);
+  if (usable.length < holes.length) {
+    warnings.push(`${holes.length - usable.length} of ${holes.length} holes are not drillable as laid out.`);
+  }
+
+  return {
+    holes,
+    rows,
+    cols,
+    spacingStrike: dStrike,
+    spacingDip: dDip,
+    collarElevation: collarZ,
+    totalHoles: holes.length,
+    drillableHoles: usable.length,
+    totalMetres: usable.reduce((sum, h) => sum + h.eoh, 0),
+    deepestHole: usable.length ? Math.max(...usable.map(h => h.eoh)) : null,
+    warnings
+  };
+}
+
 /**
  * One call that runs the whole chain, so the panel and any test drive exactly
  * the same path.
@@ -742,5 +894,27 @@ export function computePlan({
     ? null
     : suggestHoles({ collar, plane, top, base, currentAzimuth: hole.azimuth, options });
 
-  return { ...plan, envelope, proposal, projected, calibration, suggestions };
+  // The pattern grows out of where THIS hole cuts the zone, so the grid is
+  // anchored to a real planned intersection rather than to the outcrop.
+  const pattern = (options.pattern && plan.top && Number.isFinite(plan.top.depth))
+    ? generateDrillPattern({
+        origin: {
+          easting: plan.top.point.e,
+          northing: plan.top.point.n,
+          elevation: plan.top.point.u
+        },
+        baseAnchor: base,
+        plane,
+        hole,
+        collarElevation: options.pattern.collarElevation ?? collar.elevation,
+        spacingStrike: options.pattern.spacingStrike,
+        spacingDip: options.pattern.spacingDip,
+        countStrike: options.pattern.countStrike,
+        countDip: options.pattern.countDip,
+        holePrefix: options.pattern.holePrefix,
+        options
+      })
+    : null;
+
+  return { ...plan, envelope, proposal, projected, calibration, suggestions, pattern };
 }
