@@ -299,7 +299,14 @@
     </div>
   </div>
 
-  <script src="dist/bundle.js?v=20"></script>
+  <!-- No ?v= cache-buster on purpose. It was a hand-maintained counter that
+       nobody remembered to bump, so the bundle's contents changed on every
+       build while this URL stayed identical and browsers kept running old
+       JavaScript. backend/src/api/main.py serves this directory with
+       Cache-Control: no-cache, so the browser revalidates against the ETag on
+       every load and a stale bundle is impossible. Dropping the query also
+       changes the URL, which evicts anything cached under the old ?v=20. -->
+  <script src="dist/bundle.js"></script>
   <script>
     // Initialize application logic
     const API_BASE = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') ? 'http://localhost:8000' : '';
