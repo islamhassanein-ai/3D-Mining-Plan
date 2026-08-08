@@ -60,7 +60,7 @@ produces output that looks correct and is not.
 | [T008](tasks/T008_api_endpoint.md) | `POST /projects/{id}/grade-shells` | T004–T007 | Yes | Medium | **Blocked — Q2, Q4** |
 | [T009](tasks/T009_frontend_panel.md) | Grade-shell panel + rendering | T008 | — | Medium | **Blocked — Q1, Q2, Q4** |
 | [T010](tasks/T010_trench_geometry_decision.md) | Resolve trench geometry (Q5) | T004 | Yes | Small | Geometry resolved; cleanup outstanding |
-| [T011](tasks/T011_adel_face_channel_classification.md) | Adel face-channel classification | T004 | Yes | Small | **Awaiting decision — blocks Q1** |
+| [T011](tasks/T011_adel_face_channel_classification.md) | Adel face-channel classification | T004 | Yes | Small | **Done** — source corrected, re-imported |
 
 **T001 is the canonical reference** for coding style, docstring depth, test
 structure, fixture philosophy, and validation approach. Read

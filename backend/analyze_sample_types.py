@@ -103,9 +103,34 @@ def analyze(project_name, trench_length=None, composite_length=1.0):
             _print_population(comparison.by_type[sample_type])
         _print_population(comparison.pooled)
 
-        print("\nRATIOS (non-DDH vs DDH)")
+        print("\nRATIOS (all non-DDH pooled, vs DDH)")
         print("  length-weighted grade ratio : {}".format(_fmt(comparison.grade_ratio)))
         print("  plain mean ratio            : {}".format(_fmt(comparison.mean_ratio)))
+
+        # The pooled figure above averages every surface type together, which
+        # hides a real difference when a project has more than one -- Adel's
+        # face channels read seven times its trench floors. Each surface type
+        # is therefore also compared against the drill population on its own.
+        surface_types = [t for t in sorted(comparison.by_type) if t != "DDH"]
+        if len(surface_types) > 1:
+            drilled = [c for c in result.composites if c.sample_type == "DDH"]
+            print("\nRATIOS PER SAMPLE TYPE (each vs DDH alone)")
+            for sample_type in surface_types:
+                subset = drilled + [
+                    c for c in result.composites if c.sample_type == sample_type
+                ]
+                pair = compare_sample_types(subset)
+                print("  {:<5} vs DDH : {}".format(
+                    sample_type, _fmt(pair.grade_ratio)))
+
+            print("\nSURFACE TYPES AGAINST EACH OTHER")
+            reference = surface_types[0]
+            others = [c for c in result.composites
+                      if c.sample_type in surface_types]
+            pair = compare_sample_types(others, reference_type=reference)
+            print("  {} (pooled) vs {} : {}".format(
+                "+".join(surface_types[1:]), reference,
+                _fmt(pair.grade_ratio)))
 
         print("\nSCREENING (advisory -- not a statistical test)")
         print("  comparable: {}".format(comparison.comparable))

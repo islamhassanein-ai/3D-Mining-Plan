@@ -164,11 +164,18 @@ mineralised face, a trench floor cross-cuts whatever it crosses — but it means
 separate questions. FC is the population most likely to warrant geometry-only
 treatment.
 
-**The split above is not yet in the data.** All 424 Adel trench rows carry
-`hole_type = 'TR'`, AAF lines included, so the figures above were produced by
-relabelling in memory for analysis only. Correcting this is
-[T011](tasks/T011_adel_face_channel_classification.md); nothing has been
-changed.
+**The split is now in the data.** The source CSV was corrected and re-imported
+on 2026-08-08 ([T011](tasks/T011_adel_face_channel_classification.md), option A),
+so `analyze_sample_types.py "Adel"` reports
+`{'DDH': 247, 'FC': 236, 'TR': 188}` directly, with no code change and no
+`trench_id` string matching anywhere in the services.
+
+**One open item carried into this decision:** `AAF004A` is a **re-sampled face** —
+samples taken again to confirm earlier results. Three of its rows share a
+chainage with an earlier row ~1 m away in elevation, and the paired grades
+disagree sharply (0.06 vs 7.86, 0.06 vs 6.38, 0.54 vs 18.43 g/t). Before FC
+weighting is set, decide whether both members of a verification pair vote in
+interpolation, or only one. See T011's closing section.
 
 **Withdrawn:** an earlier version of this table also listed Abo Elmagd Hill
 (0.73) and Abo Elmajd (1.26), and argued from the spread between them that no
@@ -398,7 +405,7 @@ every run so the pooling stays visible in output.
 | D2 | IDW now, replaceable | T005 | **Decided** |
 | D3 | Not a resource estimate | all | **Decided** |
 | D4 | Implementer boundary | all | **Decided** |
-| Q1 | Trench influence default | T005, T009 | **Open** — and now at least two decisions (FC, TR). Blocked on [T011](tasks/T011_adel_face_channel_classification.md) |
+| Q1 | Surface-sample influence | T005, T009 | **Open** — two decisions now (FC and TR), evidence ready |
 | Q2 | Cut-off default + sensitivity set | T003, T008, T009 | **Open** |
 | Q3 | Minimum mining width | T006 | **Open** |
 | Q4 | Structural orientation inputs | T005, T008, T009 | **Open** |

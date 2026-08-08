@@ -9,7 +9,30 @@
 | **Priority** | P0 — blocks the Q1 trench-influence decision |
 | **Dependencies** | T004 (done) |
 | **Complexity** | Small |
-| **Status** | **AWAITING DECISION — no data has been changed** |
+| **Status** | **DONE — option A applied 2026-08-08** |
+
+> **Resolved by option A: the source CSV was corrected and re-imported.**
+>
+> `sample_data/Adel/Adel2.csv` — 236 AAF rows changed `Type` from `TR` to `FC`;
+> the 189 AAT rows were left untouched. The edit was verified byte-for-byte:
+> identical file size, and masking the `Type` field makes the before and after
+> files identical, so nothing else moved. A pre-edit copy is kept beside it as
+> `Adel2.csv.bak-pre-fc`. Neither file is in git — `sample_data/*/` is
+> gitignored, as real project data should be.
+>
+> Re-imported through the application's own import path (`POST
+> /projects/{id}/imports` then `/commit`), batch
+> `1355dea7-1564-4ab3-92ce-be1164aab83f`. Preview reported zone `Adel` →
+> the existing project, `{'DD': 22, 'TR': 6, 'FC': 6}`, 0 errors. The 424
+> previous trench rows were superseded, not deleted, and active counts are
+> unchanged at 424 rows / 23 collars.
+>
+> Verified end to end with no code change:
+> `analyze_sample_types.py "Adel"` now reports
+> `{'DDH': 247, 'FC': 236, 'TR': 188}`.
+>
+> **AAF004A is FC**, confirmed as a re-sampled face — samples were taken again
+> for verification. See the note at the end of this file.
 
 ---
 
@@ -95,9 +118,25 @@ readily editable — provided the source is corrected before any re-import.
 | AC-4 | P0 | The Q1 evidence table is re-run against the corrected data before any trench-influence decision is made |
 | AC-5 | P1 | If the source is not corrected, the risk that a re-import reverts the fix is recorded in the task |
 
-## Open sub-question
+## AAF004A — answered, with a consequence still open
 
-Is `AAF004A` a separate face from `AAF004`, or a second pass over the same one?
-It is one of the two lines carrying paired samples at the same chainage a metre
-apart in elevation. This does not affect its FC classification, but it may
-matter to how the face is treated geometrically later.
+**AAF004A is FC, and it is a re-sampled face: samples were taken from it again
+to confirm the earlier results.** Its classification is settled and applied.
+
+What that raises, and what this task does **not** decide: a verification
+re-sample is a second measurement of ground that has already been sampled, not
+new ground. Three of its rows share a chainage with an earlier row about a metre
+away in elevation, and the paired grades are far apart — 0.06 against 7.86, 0.06
+against 6.38, 0.54 against 18.43 g/t.
+
+That spread is itself worth understanding before the pairs are used: a
+verification duplicate that disagrees by two orders of magnitude is either
+sampling a genuinely different position on the face, or it is telling you
+something about repeatability on this material. Either reading matters to how
+much weight FC should carry.
+
+For interpolation it also poses a plain double-counting question — two samples
+at nearly the same location both voting on the same node, with one of them 130×
+the other. Options are to keep both, keep the later verification sample, or
+average the pair. **Not decided here**; recorded against Q1, where the FC
+weighting decision sits.
