@@ -432,10 +432,17 @@ def extract_composite_points(
         report.warnings.extend(warnings)
         report.n_ddh_composites += len(located)
 
+    # Ordered explicitly so two extractions of the same project always return
+    # composites in the same order. Legacy rows carry no point_order at all, so
+    # without an ORDER BY their sequence is whatever the planner happens to
+    # return. It changes nothing today -- every sample is placed at its own
+    # coordinates -- but an unordered read is the kind of thing that quietly
+    # becomes a correctness bug the moment anything reconstructs a line.
+    # ``id`` breaks ties so the order is total, not merely stable-by-luck.
     trench_rows = db.query(Trench).filter(
         Trench.project_id == project_id,
         Trench.superseded_by.is_(None),
-    ).all()
+    ).order_by(Trench.trench_id, Trench.point_order, Trench.id).all()
     report.n_trench_rows_read = len(trench_rows)
 
     by_line: Dict[str, List[Trench]] = {}

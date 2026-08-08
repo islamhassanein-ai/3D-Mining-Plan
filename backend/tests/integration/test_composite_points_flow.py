@@ -304,6 +304,50 @@ def test_project_id_accepts_a_string(db, project):
     assert result.report.n_ddh_composites == 1
 
 
+def test_extraction_is_deterministic_including_rows_without_point_order(db, project):
+    # Legacy trench rows carry no point_order, so without an explicit ORDER BY
+    # their sequence is whatever the planner returns. Two extractions of the
+    # same project must produce identical output.
+    proj, batch = project
+    _add_hole(db, proj, batch, "DDH-DET", [(0.0, 3.0, 1.0)])
+    for i in range(6):
+        row = Trench(
+            id=uuid.uuid4(),
+            project_id=proj.id,
+            trench_id="TR-LEGACY-DET",
+            easting=100.0 + i,
+            northing=200.0,
+            elevation=300.0,
+            grade_value=float(i) + 1.0,
+            point_order=None,
+            hole_type=None,
+        )
+        db.add(row)
+    db.commit()
+
+    first = extract_composite_points(db, proj.id, trench_length_when_unspecified=1.0)
+    second = extract_composite_points(db, proj.id, trench_length_when_unspecified=1.0)
+
+    assert first.composites == second.composites
+    assert [c.grade for c in first.composites] == [c.grade for c in second.composites]
+    assert [(c.x, c.y, c.z) for c in first.composites] == \
+           [(c.x, c.y, c.z) for c in second.composites]
+
+
+def test_trench_lines_are_grouped_and_ordered(db, project):
+    proj, batch = project
+    # Inserted out of order on purpose.
+    _add_trench_point(db, proj, "TR-Z", 1, 2.0, frm=1.0, to=2.0)
+    _add_trench_point(db, proj, "TR-A", 1, 4.0, frm=1.0, to=2.0)
+    _add_trench_point(db, proj, "TR-Z", 0, 1.0, frm=0.0, to=1.0)
+    _add_trench_point(db, proj, "TR-A", 0, 3.0, frm=0.0, to=1.0)
+
+    result = extract_composite_points(db, proj.id)
+
+    # TR-A's two samples, then TR-Z's, each in point_order.
+    assert [c.grade for c in result.composites] == [3.0, 4.0, 1.0, 2.0]
+
+
 def test_output_feeds_compare_sample_types_directly(db, project):
     # The critical requirement for this task: what comes out must run through
     # T002 unchanged.

@@ -12,7 +12,7 @@
 | **Priority** | P0 — blocks T005 |
 | **Dependencies** | T004 (done) |
 | **Complexity** | Small (documentation + two small code changes) |
-| **Status** | **Geometry RESOLVED — cleanup outstanding** |
+| **Status** | **DONE — 2026-08-08** |
 
 > **Resolved 2026-08-08.** The stored trench XYZ is accurate and authoritative
 > and represents the **midpoint of the sample interval**. D-A is answered:
@@ -88,7 +88,12 @@ trench-following geometry — not point interpolation.
 Confirm or overrule. If confirmed, T005 unblocks on Q5 (it remains blocked on
 Q1 and Q4).
 
-### D-D. Is a data-model change wanted?
+### D-D. Is a data-model change wanted? — **No change made**
+
+Neither candidate below was taken. Adel states chainage on all 424 trench rows,
+so nothing needs recording that the schema does not already hold, and both
+columns would be speculative additions serving no current consumer. They stay
+on record here in case a future dataset needs them.
 
 None is *required* for A1 + B1/B2. Two optional candidates:
 
@@ -104,17 +109,23 @@ Both are additive and backward-compatible. Neither is needed to proceed.
 
 ## Work that follows regardless of the decision
 
-### 1. Deterministic trench ordering (small, do this either way)
+### 1. Deterministic trench ordering — **DONE**
 
-`extract_composite_points` queries `trench` with no `ORDER BY`, so the 173
-legacy rows come back in planner order. This changes no current output — each
-sample sits at its own coordinates and T002 is order-independent — but it is a
-determinism gap and would become a correctness bug the moment anything
-reconstructs a line.
+`.order_by(Trench.trench_id, Trench.point_order, Trench.id)` added to the trench
+query in `extract_composite_points`. The `id` tiebreak is what makes the order
+*total* rather than merely stable-by-luck: legacy rows carry no `point_order`,
+so without it their sequence was whatever the planner returned.
 
-Add `.order_by(Trench.trench_id, Trench.point_order, Trench.id)` and a test
-asserting two extractions of the same project return composites in the same
-order.
+Two integration tests added — one asserting that two extractions of a project
+containing `point_order IS NULL` rows return identical composites in identical
+order, and one asserting trench lines are grouped and ordered when inserted out
+of order.
+
+Worth recording: ordering those legacy rows by `id` gives a **deterministic but
+geologically meaningless** sequence — `Trench` has no insertion-order column, so
+a UUID is the only total order available. That is the honest position. Their
+real order is not in the database, and inventing one by nearest-neighbour
+chaining would be a fabricated survey.
 
 ### 2. Correct the superseded claims — **DONE**
 
@@ -143,14 +154,14 @@ the findings document, and the T004 task file:
 
 ## Acceptance Criteria
 
-| # | Priority | Criterion |
-|---|---|---|
-| AC-1 | P0 | D-A, D-B, D-C answered in writing in `OPEN_QUESTIONS.md`, with the reasoning |
-| AC-2 | P0 | T004's specification rewritten so it matches the implementation — no task file left describing behaviour the code does not have |
-| AC-3 | P0 | Trench query is deterministically ordered, with a test |
-| AC-4 | P0 | The incorrect chainage-versus-polyline claim is corrected wherever it appears |
-| AC-5 | P0 | No data is modified, migrated, or "cleaned" in application code |
-| AC-6 | P1 | If D-D adds a column, the migration is additive with a working `downgrade()` |
+| # | Priority | Criterion | Outcome |
+|---|---|---|---|
+| AC-1 | P0 | D-A, D-B, D-C answered in writing in `OPEN_QUESTIONS.md`, with the reasoning | **Met** |
+| AC-2 | P0 | T004's specification rewritten so it matches the implementation — no task file left describing behaviour the code does not have | **Met** — requirements 3–12, the interface contract, fixtures F5–F7d, and the acceptance criteria all rewritten |
+| AC-3 | P0 | Trench query is deterministically ordered, with a test | **Met** — 2 tests |
+| AC-4 | P0 | The incorrect chainage-versus-polyline claim is corrected wherever it appears | **Met** — corrected in the service docstring, `OPEN_QUESTIONS.md`, the findings document and the T004 task file; the start-vs-midpoint claim corrected in the same places |
+| AC-5 | P0 | No data is modified, migrated, or "cleaned" in application code | **Met** — the only data change was T011's source-CSV correction and re-import, done through the application's own import path |
+| AC-6 | P1 | If D-D adds a column, the migration is additive with a working `downgrade()` | **N/A** — no column added |
 
 ---
 

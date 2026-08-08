@@ -67,38 +67,65 @@ T005.
 3. Build the hole's trace by calling
    `backend.src.services.desurvey.compute_minimum_curvature_trace()` with the
    collar coordinates and the hole's `Survey` rows. **Do not implement your own
-   desurvey.** If the hole has no survey rows, synthesise a single station at
-   depth 0 from the collar's own dip/azimuth if present; if neither exists,
-   skip the hole and record it in `skipped`.
+   desurvey.** A hole with no survey rows is **skipped and recorded in
+   `skipped`** — `Collar` carries no dip or azimuth of its own, so there is
+   nothing to synthesise a station from, and assuming a vertical hole (as
+   `scene.py` does so that something is drawn) would place real assays at
+   invented coordinates that go on to shape a shell.
+   Extend the trace to the deepest composite with
+   `downhole_log.compute_total_depth` and `extend_trace_to_depth` before
+   sampling it; survey stations routinely stop short of the deepest assay, and
+   without extending, every composite past the last station clamps onto one
+   coordinate.
 4. For each composite, take the **midpoint depth**
-   `(from_depth + to_depth) / 2` and find its `(x, y, z)` by **linear
-   interpolation between the two bracketing trace points** by depth. Depths
-   beyond the last trace point are clamped to the last point and the composite
-   is flagged in `warnings`.
-5. `sample_type = "DDH"`.
-6. Skip collars whose `status` is `planned` — a planned hole has no assays, and
-   any `grade` on it is a *target*, not a result. Including targets in a grade
-   shell would fabricate mineralisation. Record the count in `skipped`.
+   `(from_depth + to_depth) / 2` and find its `(x, y, z)` with
+   `downhole_log.interpolate_trace_position`, which interpolates between the
+   bracketing trace points at an **absolute depth measured from the collar**.
+   Warn when the assays run deeper than the surveys.
+5. `sample_type = "DDH"` for every collar-borne composite, including `RC`.
+   See Q6 — RC is currently pooled with diamond core. Adel contains no RC, so
+   nothing turns on it today; report the split via
+   `collars_by_hole_type` so the pooling stays visible.
+6. Skip collars whose **`hole_status`** is `planned` (the column is
+   `hole_status`, not `status`; `NULL` reads as drilled) — a planned hole has no
+   assays, and any `grade` on it is a *target*, not a result. Including targets
+   in a grade shell would fabricate mineralisation. Record each in `skipped`.
+   Also skip, defensively, any collar whose `hole_type` is a trench type.
 
 ### Functional — trenches
 
+> Requirements 8–10 were **rewritten on 2026-08-08** after the original chainage
+> rule proved unimplementable against the real database. The investigation is
+> [`../analysis/Q5_trench_geometry_findings.md`](../analysis/Q5_trench_geometry_findings.md);
+> the resolution is [`T010`](T010_trench_geometry_decision.md).
+
 7. Query `Trench` rows for the project with **`superseded_by IS NULL`**,
-   grouped by `trench_id`, ordered by `point_order`.
-8. The ordered points form a **polyline**. Compute cumulative chainage along it
-   from `point_order = 0`.
-9. Trench sample rows carry `from_depth` / `to_depth`, which are **chainage
-   along the trench**, not vertical depth. Composite them with T001 exactly as
-   for a hole, then place each composite's midpoint chainage on the polyline by
-   linear interpolation between the bracketing polyline vertices.
-10. Elevation comes from the interpolated polyline vertices' `elevation`. **Do
-    not apply `dip` to move the sample below surface** — per the combined-CSV
-    rules, trench points stay at collar elevation. If a vertex has
-    `elevation is None`, skip that trench and record it.
-11. `sample_type` is taken from `hole_type` where it is `TR`, `CH`, or `FC`;
-    anything else defaults to `"TR"`.
-12. A trench with fewer than 2 points cannot form a polyline. If it has exactly
-    one point with a grade, emit a single composite at that point with
-    `length = 1.0`, and note it in `warnings`.
+   **explicitly ordered** by `trench_id`, `point_order`, `id`, then grouped by
+   `trench_id`. The `id` tiebreak matters: legacy rows carry no `point_order`,
+   and without a total order their sequence is whatever the planner returns.
+8. **Each assayed trench row is one composite.** Trench samples are **not**
+   composited along chainage and no position is interpolated. The row's stored
+   `easting`/`northing`/`elevation` are accurate and authoritative and mark the
+   **midpoint of the sample interval** — confirmed from Adel field data — which
+   makes trench placement consistent with the drillhole path, where composites
+   are also placed at their midpoint.
+9. **Chainage gives length, not position.** `length = to_depth - from_depth`
+   where both are present. Chainage cannot position a sample because it is not
+   unique: Adel's face lines carry paired samples sharing a chainage about a
+   metre apart in elevation, reading 0.06 against 7.86 g/t in one case. Nor is
+   there a stored polyline to interpolate along — the table holds points, and
+   the line is only those points joined.
+10. Where no length is stated, `length_when_unspecified` decides: `None` (the
+    default) **excludes the row and warns**, rather than inventing a sample
+    support; a stated number includes it under that assumption. All 424 Adel
+    trench rows carry chainage, so this path is generic handling and needs no
+    geological default.
+11. **Never apply `dip` to move a trench sample below surface** — per the
+    combined-CSV rules it is ground slope at the start point, not a trajectory.
+    A row with an incomplete position is excluded and warned about.
+12. `sample_type` is taken from `hole_type` where it is `TR`, `CH`, or `FC`,
+    upper-cased; anything else defaults to `"TR"`. The classification belongs in
+    the data — **no `trench_id` string matching in any service** (see T011).
 
 ### Functional — result
 
@@ -138,10 +165,29 @@ class ExtractionResult:
 
 def extract_composite_points(
     db: Session,
-    project_id,                       # uuid.UUID
+    project_id,                       # uuid.UUID or str
     composite_length: float = 1.0,
+    trench_length_when_unspecified: float | None = None,
 ) -> ExtractionResult:
     ...
+```
+
+The implemented `ExtractionReport` carries more than the sketch above — every
+record that does not become a composite is accounted for:
+`composites_by_type`, `collars_by_hole_type`, `n_collars_considered`,
+`n_trench_lines_considered`, `n_assay_intervals_read`, `n_trench_rows_read`,
+`n_unassayed_assay_intervals`, `n_unassayed_trench_rows`, alongside `skipped`,
+`warnings` and `grade_unit`.
+
+The transformation is kept separate from the querying so it can be tested
+without a database:
+
+```python
+def build_drillhole_composites(collar, surveys, intervals, composite_length=1.0)
+    -> tuple[list[TypedComposite], list[str]]
+
+def build_trench_composites(points, length_when_unspecified=None)
+    -> tuple[list[TypedComposite], list[str], int]
 ```
 
 `TypedComposite.x/y/z` are populated for every returned composite. A composite
@@ -171,16 +217,29 @@ and northing in `y`. A swapped implementation puts `2000` in `z`.
 **F4 — superseded excluded.** Two assay rows over the same interval, one with
 `superseded_by` set. Only the live one contributes.
 
-**F5 — planned hole skipped.** A collar with `status='planned'` and target
+**F5 — planned hole skipped.** A collar with `hole_status='planned'` and target
 intervals produces zero composites and one entry in `report.skipped`.
 
-**F6 — trench polyline.** Trench with points at chainage-defining vertices
-`(0,0,100)` and `(100,0,100)`, one sample `from=0, to=10, grade=2.0`.
-Expect ten 1 m composites at `x = 0.5, 1.5, … 9.5`, all `y=0`, all `z=100`.
+**F6 — trench sample sits where its row says.** Two rows at `(100,200,300)` and
+`(110,200,300)`, samples `0–1 @ 2.0` and `1–2 @ 4.0`. Expect two composites at
+exactly those coordinates, each `length = 1.0`. Nothing is interpolated.
 
-**F7 — trench stays at surface.** Give the trench in F6 a `dip = -45`. The
-composites' `z` must still be `100`. Dip is ground slope metadata, not a
-trajectory.
+**F7 — trench stays at surface.** Give a trench row `dip = -45`. Its composite's
+`z` must still be the row's stated elevation. Dip is ground slope metadata, not
+a trajectory.
+
+**F7b — paired chainage does not collide.** Four rows, two at chainage `0–1`
+and two at `1–2`, at distinct coordinates (Adel's AAF002 pattern). Expect
+**four** composites, all four grades preserved. Compositing along chainage would
+raise on the overlap; placing each row at its own coordinates keeps them.
+
+**F7c — no stated length.** A row with `from_depth`/`to_depth` NULL is excluded
+and warned about by default, and included with the given length when
+`length_when_unspecified` is passed.
+
+**F7d — deterministic order.** Two extractions of the same project, including
+rows with `point_order IS NULL`, return identical composites in identical
+order.
 
 **F8 — mixed units raise.** Two assays, `g/t` and `ppm` → `ValueError`.
 
@@ -199,9 +258,11 @@ trajectory.
 | AC-3 | P0 | Every query filters `superseded_by IS NULL` |
 | AC-4 | P0 | Planned holes contribute nothing |
 | AC-5 | P0 | No axis swap; `(x,y,z) == (easting, northing, elevation)` |
-| AC-6 | P0 | Trench composites keep polyline elevation; dip is never applied as a trajectory |
-| AC-7 | P0 | Every skipped hole/trench appears in `report.skipped` with a reason |
-| AC-8 | P1 | Integration test runs against the reference-project fixtures and passes |
+| AC-6 | P0 | Trench composites keep the elevation their row states; dip is never applied as a trajectory |
+| AC-7 | P0 | Every skipped hole/trench appears in `report.skipped` or `report.warnings` with a reason |
+| AC-8 | P0 | The trench query has a total `ORDER BY`, and extraction is deterministic |
+| AC-9 | P0 | No `trench_id` (or any hole-name) string matching anywhere in `backend/src/services/` |
+| AC-10 | P1 | The pure builders are unit-tested without a database |
 
 ---
 
@@ -211,7 +272,12 @@ trajectory.
   Call the service. It handles the sign convention and the dogleg correctly.
 - Placing a composite at its `from_depth` rather than its midpoint.
 - Treating `Trench.from_depth` as vertical depth. It is chainage along the
-  trench floor.
+  trench, and it gives the sample's **length**, not its position.
+- Deriving a sample type from a hole or trench name. The classification belongs
+  in the data; a prefix match in a service reclassifies future datasets by
+  accident and leaves every other consumer of the table reading the old value.
+- Reading trenches without a total `ORDER BY` because "it seems to come back in
+  order anyway".
 - Including planned-hole target grades. They are a drilling proposal, and
   turning them into an orebody shell manufactures a deposit that does not exist.
 - Returning composites with `None` coordinates and letting T005 deal with it.

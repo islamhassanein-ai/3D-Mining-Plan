@@ -335,18 +335,14 @@ from_depth` where present. Rows stating no length are **excluded and counted**
 by default; `trench_length_when_unspecified` includes them under a stated
 assumption. Nothing is interpolated and no reconciliation is invented.
 
-### Remaining work under T010
+### T010 — closed 2026-08-08
 
-The geometry source is settled (midpoint coordinates, authoritative). What is
-left in [T010](tasks/T010_trench_geometry_decision.md) is small and mostly
-mechanical:
-
-- rewrite T004's requirements 8–10 so the specification matches the code;
-- add deterministic ordering to the trench query;
-- correct the start-vs-midpoint and chainage-vs-polyline claims wherever they
-  appear;
-- record whether a `sample_length_m` column is wanted (optional, additive, not
-  needed for Adel since every row states chainage).
+The geometry source is settled: **authoritative midpoint coordinates**. The
+follow-up work is done — T004's specification rewritten to match the code, a
+total `ORDER BY` on the trench query with two determinism tests, and the
+start-vs-midpoint and chainage-vs-polyline claims corrected everywhere they
+appeared. No data-model change was made: Adel states chainage on all 424 rows,
+so a `sample_length_m` column would serve no consumer.
 
 **Q5 does not block T005.** Anisotropic IDW consumes located point samples and a
 search ellipsoid — it never asks how two samples in a trench are connected, and
