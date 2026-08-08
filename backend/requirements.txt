@@ -13,4 +13,5 @@ ezdxf
 pyshp
 reportlab
 numpy
+scikit-image
 

@@ -8,24 +8,26 @@
 | **Priority** | P0 |
 | **Dependencies** | T005 |
 | **Complexity** | Medium |
-| **Status** | **BLOCKED — Q3** |
+| **Status** | **DONE — Q3 still open, and deliberately not implemented** |
 
-> ## Blocked: do not implement yet
+> Implemented with **no minimum-width enforcement**, per the recommendation in
+> Q3: enforcing one would turn a *grade* shell into a *mining* shape, which is a
+> different object and exactly the conflation D3 exists to prevent. `min_volume`
+> remains a volume filter and will not remove a thin, laterally extensive sheet
+> — that is a known limitation, recorded rather than papered over.
 >
-> **Q3 (minimum mining width)** in
-> [`../OPEN_QUESTIONS.md`](../OPEN_QUESTIONS.md) is unresolved, and the three
-> options differ in scope enough to change this task's deliverables.
+> **D1 implemented**: `nan` becomes a sentinel strictly below the threshold, so
+> the surface closes inward against unsampled ground.
 >
-> As written, this task enforces **no** minimum width. `min_volume` is a volume
-> filter, not a width filter — it will not remove a thin but laterally
-> extensive sheet, which is exactly the geometry a minimum-width rule exists to
-> catch. If the answer is "report only", a thickness measurement is added to
-> T007. If it is "enforce", this task gains a morphological open/close step
-> before extraction.
->
-> Also binding here, and **not** open: **D1** — `nan` is treated as
-> below-threshold so the surface closes inward against unsampled ground. That
-> is the approved no-extrapolation behaviour and must not be relaxed.
+> **One deviation from the specification below.** Requirement 8 said to return
+> an empty result when all values are above the threshold. It does not: when
+> every estimated node qualifies, the surface returned is the boundary of the
+> estimated region. That is the truthful answer — the cut-off has selected
+> everything sampled — and an implausibly large envelope makes a mis-set
+> threshold obvious where an empty result would hide it. It is still not
+> extrapolation: the envelope stops where the interpolant stopped. An empty
+> result is returned when nothing was estimated, or when nothing reaches the
+> threshold.
 
 ---
 

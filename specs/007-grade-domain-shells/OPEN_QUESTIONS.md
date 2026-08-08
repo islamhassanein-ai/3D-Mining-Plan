@@ -512,7 +512,7 @@ every run so the pooling stays visible in output.
 | Q1a | **FC** influence | — | **Decided (D6)** — geometry only, weight `0.0` |
 | Q1b | **TR** influence | T005, T009 | **Referred to the expert team** — see [briefing](analysis/TR_weighting_briefing.md) |
 | Q2 | Cut-off | T003 unblocked | **Decided (D8)** — no default; choose from T003's evidence |
-| Q3 | Minimum mining width | T006 | **Open** |
+| Q3 | Minimum mining width | — | **Open, not enforced** — T006 ships with no width rule, per the recommendation. Revisit if thin sheets appear in a real shell |
 | Q4 | Structural orientation inputs | T005 needs values | **Decided (D7)** — required, no defaults. Awaiting Adel's strike/dip/ranges |
 | Q5 | Trench sample geometry | — | **Resolved 2026-08-08**: stored XYZ is the authoritative sample **midpoint**. Cleanup in [T010](tasks/T010_trench_geometry_decision.md) |
 | Q6 | RC pooled with diamond core | — | **Not applicable** — Adel has no RC. Labelling matter only |

@@ -8,7 +8,14 @@
 | **Priority** | P0 |
 | **Dependencies** | T006 |
 | **Complexity** | Medium |
-| **Status** | TODO |
+| **Status** | **DONE** |
+
+> Implemented in `backend/src/services/shell_validation.py` with 22 unit tests,
+> plus `backend/tests/integration/test_grade_shell_pipeline.py` running
+> T004→T005→T006→T007 end to end on a synthetic body.
+>
+> No `is_valid` flag is returned, per AC-7 — the module reports and the
+> competent person decides. Statistics are broken out by sample type throughout.
 
 ---
 
