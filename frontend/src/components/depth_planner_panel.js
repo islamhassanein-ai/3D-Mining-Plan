@@ -553,20 +553,22 @@ export class DepthPlannerPanel {
   }
 
   renderResults(r) {
-    if (r.top.parallel) {
-      this.resultsEl.innerHTML =
-        `<div class="dp-section-title">5 &nbsp;Result</div>
-         <div class="dp-note dp-err">The hole runs parallel to this plane — it never intersects.
-         Change the azimuth or the dip.</div>`;
-      this.calibrationEl.innerHTML = '';
-      return;
-    }
+    // A hole that misses the zone is the case where suggestions matter MOST --
+    // "this misses, here is one that hits" is the entire point of the tool. So
+    // the failure branches report the miss and then fall through to the
+    // suggestions table rather than leaving the panel empty.
+    const miss = r.top.parallel
+      ? `The hole runs parallel to this plane — it never intersects.`
+      : r.top.behindCollar
+        ? `The plane sits behind the collar (${r.top.depth.toFixed(1)} m). This hole is
+           drilled away from the zone — the zone outcrops above or behind this collar.`
+        : null;
 
-    if (r.top.behindCollar) {
-      this.resultsEl.innerHTML =
-        `<div class="dp-section-title">5 &nbsp;Result</div>
-         <div class="dp-note dp-err">The plane sits behind the collar (${r.top.depth.toFixed(1)} m).
-         This hole is drilled away from the zone.</div>`;
+    if (miss) {
+      this.resultsEl.innerHTML = `
+        <div class="dp-section-title">5 &nbsp;Result</div>
+        <div class="dp-note dp-err">${miss}</div>
+        ${this.suggestionsHtml(r)}`;
       this.calibrationEl.innerHTML = '';
       return;
     }
@@ -661,18 +663,24 @@ export class DepthPlannerPanel {
    */
   suggestionsHtml(r) {
     const s = r.suggestions;
+    // The current hole only has a meaningful cut angle if it actually reaches
+    // the zone; quoting one for a hole drilled the wrong way is nonsense.
+    const hits = !r.top.parallel && !r.top.behindCollar;
+
     if (!s || !s.candidates.length) {
       return `
         <div class="dp-section-title" style="margin-top:12px;">Suggested holes</div>
-        <div class="dp-note">No orientation from this collar cuts the zone at
-        ${s ? s.bounds.minAngle : 30}° or better within the depth budget. Try moving the
-        collar, or widen the limits above.</div>`;
+        <div class="dp-note">No orientation from this collar reaches the zone at
+        ${s ? s.bounds.minAngle : 30}° or better within the depth budget. The zone probably
+        outcrops above this collar, or lies behind it — move the collar down-dip
+        (toward the direction the zone dips), or widen the limits above.</div>`;
     }
 
     const current = r.intersectionAngleDeg;
 
     const rows = s.candidates.map((c, i) => {
-      const better = c.angle > current + 0.5;
+      // With no usable current hole, every candidate is an improvement.
+      const better = !hits || c.angle > current + 0.5;
       return `
         <tr class="${c.drillable ? '' : 'dp-undrillable'}">
           <td>
@@ -691,8 +699,10 @@ export class DepthPlannerPanel {
     return `
       <div class="dp-section-title" style="margin-top:12px;">Suggested holes</div>
       <div class="dp-note">
-        Your hole cuts at <b>${current.toFixed(0)}°</b>. ${s.searched} orientations searched
-        within ${s.bounds.minDip}–${s.bounds.maxDip}° dip.
+        ${hits
+          ? `Your hole cuts at <b>${current.toFixed(0)}°</b>.`
+          : `<b class="dp-warn">Your hole misses the zone.</b> These reach it:`}
+        ${s.searched} orientations searched within ${s.bounds.minDip}–${s.bounds.maxDip}° dip.
         <b>Apply</b> writes an orientation into the form above and redraws the 3D view.
       </div>
       <div class="dp-scroll">

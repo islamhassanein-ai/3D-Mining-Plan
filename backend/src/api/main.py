@@ -59,6 +59,29 @@ app.include_router(qaqc_router)
 def read_root():
     return {"status": "healthy", "service": "Gold Prospect 3D Visualizer API"}
 
+class RevalidatingStaticFiles(StaticFiles):
+    """StaticFiles that makes the browser re-check before reusing a cached file.
+
+    index.html loads the bundle as ``dist/bundle.js?v=20`` -- a version counter
+    someone has to remember to bump. Nobody does. The bundle's CONTENTS change on
+    every build while that URL stays identical, so a browser that cached ``?v=20``
+    keeps running old JavaScript indefinitely: you rebuild, restart, reload, and
+    the app is visibly unchanged. It looks exactly like a build that silently
+    failed, and the only cure is knowing to hard-refresh.
+
+    ``no-cache`` does not mean "do not cache" -- it means "cache it, but
+    revalidate before reuse". Starlette already sends ETag and Last-Modified, so
+    an unchanged file costs one 304 with an empty body, and a changed file is
+    fetched. That makes the ``?v=`` counter harmless when stale rather than
+    load-bearing.
+    """
+
+    def file_response(self, *args, **kwargs):
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
 # Serve the built frontend (index.html + dist/bundle.js) from this same
 # process/port, so the whole app is one thing to start and one URL to open.
 # Must be mounted LAST: FastAPI/Starlette checks routes in registration
@@ -66,4 +89,4 @@ def read_root():
 # serves what nothing else claimed. Requires `npm run build` in frontend/ to
 # have produced frontend/dist/bundle.js -- see run.ps1 / README.md.
 if os.path.isdir(FRONTEND_DIR):
-    app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")
+    app.mount("/", RevalidatingStaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")
