@@ -688,6 +688,13 @@
         // the geologist loses whatever scenario they were part-way through.
         depthPlanner = new window.DepthPlannerPanel('depth-planner-container', viewport3D, data, {
           projectId: currentProject,
+          // Read off the switcher rather than the scene payload, which does not
+          // carry a name. Only used to caption an exported section image, so a
+          // missing option is not worth guarding beyond the fallback.
+          projectName: (() => {
+            const opt = document.querySelector(`#project-select option[value="${currentProject}"]`);
+            return opt ? opt.textContent.trim() : null;
+          })(),
           // Saved holes are project data now, so the whole scene reloads and
           // they come back as real planned boreholes rather than a drawing.
           onSaved: () => loadProjectScene(currentProject)

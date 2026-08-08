@@ -6,6 +6,8 @@ import {
   isNum
 } from '../services/depth_planner.js';
 import { ApiClient } from '../services/api_client.js';
+import { buildPlanSection } from '../export/plan_section_svg.js';
+import { svgBlob, svgToPngBlob, downloadBlob, sectionFilename } from '../export/section_image.js';
 
 // Drillhole Depth Planner.
 //
@@ -42,6 +44,7 @@ export class DepthPlannerPanel {
     // Both optional: without them the planner still works as a scratchpad, it
     // just cannot persist. The standalone HTML export has neither.
     this.projectId = options.projectId || null;
+    this.projectName = options.projectName || null;
     this.onSaved = options.onSaved || null;
     this.result = null;
     this.debounce = null;
@@ -225,6 +228,22 @@ export class DepthPlannerPanel {
             <button class="btn-small" id="dp-copy">Copy report</button>
             <button class="btn-small" id="dp-clear">Clear plan</button>
           </div>
+
+          <div class="dp-section-title">8 &nbsp;Section image</div>
+          <div class="dp-note">
+            A vertical section looking along strike — collar, zone, and the depths a
+            driller is handed — to paste into a proposal.
+          </div>
+          <div class="dp-row" style="margin-top:6px;">
+            <label class="dp-check">
+              <input type="checkbox" id="dp-img-light"> White background (for printed reports)
+            </label>
+          </div>
+          <div class="dp-actions" style="margin-top:8px;">
+            <button class="btn-small" id="dp-img-png">Export PNG</button>
+            <button class="btn-small" id="dp-img-svg">Export SVG</button>
+          </div>
+          <div id="dp-img-status" class="dp-note"></div>
         </div>
       </div>
     `;
@@ -376,6 +395,9 @@ export class DepthPlannerPanel {
     q('#dp-copy').onclick = () => this.copyReport();
     q('#dp-clear-observed').onclick = () => { q('#dp-observed').value = ''; this.recompute(); };
 
+    q('#dp-img-png').onclick = () => this.exportSection('single', 'png');
+    q('#dp-img-svg').onclick = () => this.exportSection('single', 'svg');
+
     q('#dp-load-hole').onclick = () => { this.loadHole(); this.recompute(); };
     q('#dp-collar-hole').onchange = () => { this.loadHole(); this.recompute(); };
     q('#dp-trench').onchange = () => { this.loadTrench(); this.recompute(); };
@@ -405,6 +427,9 @@ export class DepthPlannerPanel {
 
       if (e.target.closest('#dp-copy-pattern')) this.copyPatternCsv();
       if (e.target.closest('#dp-save-pattern')) this.savePattern();
+      // The pattern image is a PNG only: it is a picture of a programme, headed
+      // for a proposal, and offering four buttons for one drawing is noise.
+      if (e.target.closest('#dp-img-pattern')) this.exportSection('pattern', 'png');
     });
 
     // Showing the grid inputs only when the grid is switched on keeps the
@@ -841,6 +866,7 @@ export class DepthPlannerPanel {
       </div>
       <div class="dp-actions" style="margin:8px 0 0;">
         <button class="btn-small" id="dp-copy-pattern">Copy as CSV</button>
+        <button class="btn-small" id="dp-img-pattern" ${p.drillableHoles ? '' : 'disabled'}>Section image</button>
         ${this.projectId
           ? `<button class="btn-small" id="dp-save-pattern" ${p.drillableHoles ? '' : 'disabled'}>
                Save ${p.drillableHoles} holes to project
@@ -948,6 +974,55 @@ export class DepthPlannerPanel {
       },
       () => { if (window.toast) window.toast.error('Could not copy to clipboard'); }
     );
+  }
+
+  /**
+   * The plan as a section drawing, downloaded as an image.
+   *
+   * `mode` is 'single' (the proposed hole on its own) or 'pattern' (every
+   * drillable hole in the grid on one section). The drawing is built from the
+   * SAME result object the panel and the 3D view are showing, so an exported
+   * image can never quote a depth that is not on screen.
+   *
+   * A plan that cannot be drawn -- a hole that misses, a zone behind the collar
+   * -- throws with a sentence explaining which, and that sentence is left on
+   * screen rather than flashed away: it is the same information the Result
+   * section is already reporting, and the user asked for a file they did not
+   * get.
+   */
+  async exportSection(mode, format) {
+    const status = this.container.querySelector('#dp-img-status');
+    const write = (html) => { if (status) status.innerHTML = html; };
+
+    if (!this.result) {
+      write(`<span class="dp-err">Nothing to draw yet — complete the plan above.</span>`);
+      return;
+    }
+
+    try {
+      const { svg, holeCount } = buildPlanSection(this.result, {
+        mode,
+        theme: this.container.querySelector('#dp-img-light').checked ? 'light' : 'dark',
+        projectName: this.projectName || null
+      });
+
+      const base = mode === 'pattern'
+        ? `${(this.container.querySelector('#dp-prefix').value || 'PLAN').trim()}-pattern`
+        : (this.result.holeId || 'drill-plan');
+
+      if (format === 'svg') {
+        downloadBlob(svgBlob(svg), sectionFilename(base, 'svg'));
+      } else {
+        downloadBlob(await svgToPngBlob(svg), sectionFilename(base, 'png'));
+      }
+
+      const what = mode === 'pattern' ? `${holeCount} holes` : 'the proposed hole';
+      write(`<span style="color:var(--accent-green,#22c55e)">Section image of ${what} downloaded.</span>`);
+      if (window.toast) window.toast.success(`Section image exported (${format.toUpperCase()})`);
+    } catch (err) {
+      write(`<span class="dp-err">${escapeAttr(err.message)}</span>`);
+      if (window.toast) window.toast.error(err.message, { title: 'Could not export the section' });
+    }
   }
 
   /** Write a suggested orientation into the hole fields and recompute. */
