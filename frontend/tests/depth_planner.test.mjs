@@ -18,6 +18,8 @@ import {
   calibrate,
   drillingProposal,
   computePlan,
+  perpendicularOrientation,
+  suggestHoles,
   dot
 } from '../src/services/depth_planner.js';
 
@@ -362,6 +364,149 @@ test('computePlan runs the full chain in one call', () => {
   assert.equal(result.projected.length, 1);
   assert.ok(result.calibration, 'calibration ran because observedDepth was given');
   near(result.calibration.observed, 53, 1e-9, 'observed carried through');
+});
+
+// --- suggested holes --------------------------------------------------------
+
+test('the perpendicular orientation is drill back up-dip at 90 minus the zone dip', () => {
+  const ideal = perpendicularOrientation(MEAN);
+  // Zone dips 40.4 toward 196.8, so cut it dead-on by drilling toward 16.8
+  // at 49.6 below horizontal.
+  near(ideal.azimuth, 16.80, 0.05, 'azimuth is dip direction + 180');
+  near(ideal.dip, 49.58, 0.05, 'dip is 90 - zone dip');
+
+  // And it must actually achieve 90 degrees.
+  const angle = intersectionAngleDeg({ azimuth: ideal.azimuth, dip: signedDip(ideal.dip) }, MEAN);
+  near(angle, 90, 1e-6, 'a dead-on cut');
+});
+
+test('a perpendicular cut makes core length equal true thickness', () => {
+  const ideal = perpendicularOrientation(MEAN);
+  const plan = planZone({
+    collar: COLLAR,
+    hole: { azimuth: ideal.azimuth, dip: signedDip(ideal.dip) },
+    plane: MEAN, top: TOP, base: BASE
+  });
+  near(plan.trueThickness, plan.coreLength, 1e-6, 'no oblique inflation');
+});
+
+test('suggestions beat the hole the geologist typed in', () => {
+  const s = suggestHoles({
+    collar: COLLAR, plane: MEAN, top: TOP, base: BASE, currentAzimuth: 30
+  });
+
+  assert.ok(s.candidates.length >= 2, `expected candidates, got ${s.candidates.length}`);
+  assert.ok(s.searched > 100, 'the grid was actually searched');
+
+  // For this zone one orientation wins outright -- 017/50 is simultaneously the
+  // perpendicular cut, the shallowest, and the balanced pick -- so those
+  // objectives collapse into a single row rather than repeating the same hole.
+  const best = s.candidates[0];
+  near(best.azimuth, 16.80, 0.05, 'best azimuth');
+  near(best.dip, 49.58, 0.05, 'best dip');
+  near(best.angle, 90, 1e-6, 'a dead-on cut');
+  assert.ok(best.label.includes('Perpendicular') && best.label.includes('Shallowest'),
+    `objectives should merge onto one row: "${best.label}"`);
+
+  // It beats the 030/60 hole the geologist proposed, on angle AND on depth.
+  const proposed = planZone({ collar: COLLAR, hole: HOLE, plane: MEAN, top: TOP, base: BASE });
+  assert.ok(best.angle > proposed.intersectionAngleDeg, 'better cut than 030/60');
+  assert.ok(best.topDepth < proposed.top.depth, 'and reaches the zone sooner');
+
+  // Access constraints are respected as their own option.
+  const onAzimuth = s.candidates.find(c => c.label.includes('current azimuth'));
+  assert.ok(onAzimuth, 'an option that keeps azimuth 030');
+  near(onAzimuth.azimuth, 30, 1e-9, 'keeps the planned azimuth');
+  assert.ok(onAzimuth.dip < 60, `dip should flatten from 60 to ~50, got ${onAzimuth.dip}`);
+  assert.ok(onAzimuth.angle > proposed.intersectionAngleDeg, 'still better than 030/60');
+
+  // Every candidate must be a real, usable hole.
+  for (const c of s.candidates) {
+    assert.ok(c.topDepth > 0, `${c.label}: zone must be ahead of the collar`);
+    assert.ok(Number.isFinite(c.eoh) && c.eoh > c.topDepth, `${c.label}: EOH past the zone`);
+    assert.ok(c.envelope && c.envelope.max >= c.envelope.min, `${c.label}: has an envelope`);
+    assert.ok(c.label.length > 0 && typeof c.note === 'string');
+  }
+});
+
+test('every objective is represented, and duplicates merge rather than repeat', () => {
+  const s = suggestHoles({
+    collar: COLLAR, plane: MEAN, top: TOP, base: BASE, currentAzimuth: 30
+  });
+  const labels = s.candidates.map(c => c.label).join(' | ');
+  for (const objective of ['Perpendicular cut', 'Shallowest', 'Balanced']) {
+    assert.ok(labels.includes(objective), `${objective} missing from: ${labels}`);
+  }
+  // Orientations are unique -- two objectives landing on one hole share a row.
+  const keys = s.candidates.map(c => `${Math.round(c.azimuth)}/${Math.round(c.dip)}`);
+  assert.equal(new Set(keys).size, keys.length, 'no duplicate orientations');
+});
+
+test('the shallowest candidate really is the shallowest', () => {
+  const s = suggestHoles({ collar: COLLAR, plane: MEAN, top: TOP, base: BASE });
+  const shallow = s.candidates.find(c => c.label.includes('Shallowest'));
+  assert.ok(shallow);
+  for (const c of s.candidates) {
+    assert.ok(shallow.deepest <= c.deepest + 1e-9,
+      `${c.label} (${c.deepest.toFixed(1)} m) is shallower than Shallowest (${shallow.deepest.toFixed(1)} m)`);
+  }
+});
+
+test('drillability bounds are enforced, and the ideal is flagged when it breaks them', () => {
+  // A steep zone demands a flat hole: 75-degree zone -> 15-degree ideal, which
+  // no surface rig will drill straight.
+  const steep = { dip: 75, dipDirection: 200 };
+  const ideal = perpendicularOrientation(steep);
+  near(ideal.dip, 15, 1e-9, 'ideal dip for a steep zone');
+
+  const s = suggestHoles({ collar: COLLAR, plane: steep, top: TOP, base: BASE });
+  assert.equal(s.ideal.drillable, false, 'a 15-degree hole is not drillable');
+
+  const perp = s.candidates.find(c => c.label.includes('Perpendicular'));
+  assert.ok(perp && perp.drillable === false, 'the perpendicular row is flagged undrillable');
+  assert.ok(/drillable band/.test(perp.note), `note should explain why: "${perp.note}"`);
+
+  // Everything else stays inside the band.
+  for (const c of s.candidates) {
+    if (c.label.includes('Perpendicular')) continue;
+    assert.ok(c.dip >= 45 && c.dip <= 85, `${c.label} dip ${c.dip} outside 45-85`);
+  }
+});
+
+test('candidates never fall below the minimum intersection angle', () => {
+  const s = suggestHoles({
+    collar: COLLAR, plane: MEAN, top: TOP, base: BASE, options: { minAngle: 60 }
+  });
+  for (const c of s.candidates) {
+    if (c.label.includes('Perpendicular')) continue; // the ideal is exempt by design
+    assert.ok(c.angle >= 60, `${c.label} cuts at only ${c.angle.toFixed(1)}°`);
+  }
+});
+
+test('a depth budget removes the holes that would blow it', () => {
+  const generous = suggestHoles({ collar: COLLAR, plane: MEAN, top: TOP, base: BASE });
+  const tight = suggestHoles({
+    collar: COLLAR, plane: MEAN, top: TOP, base: BASE, options: { maxEoh: 80 }
+  });
+  assert.ok(tight.searched < generous.searched, 'a tighter budget searches fewer valid holes');
+  for (const c of tight.candidates) {
+    if (c.label.includes('Perpendicular')) continue;
+    assert.ok(c.eoh <= 80 + 1, `${c.label} EOH ${c.eoh} exceeds the 80 m budget`);
+  }
+});
+
+test('computePlan attaches suggestions, and honours opting out', () => {
+  const withSuggestions = computePlan({
+    collar: COLLAR, hole: HOLE, plane: MEAN, top: TOP, base: BASE
+  });
+  assert.ok(withSuggestions.suggestions, 'suggestions are on by default');
+  assert.ok(withSuggestions.suggestions.candidates.length > 0);
+
+  const without = computePlan({
+    collar: COLLAR, hole: HOLE, plane: MEAN, top: TOP, base: BASE,
+    options: { suggest: false }
+  });
+  assert.equal(without.suggestions, null);
 });
 
 test('computePlan skips calibration when no depth was observed', () => {

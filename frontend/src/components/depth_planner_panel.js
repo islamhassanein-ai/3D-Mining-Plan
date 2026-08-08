@@ -260,6 +260,16 @@ export class DepthPlannerPanel {
       .dp-warn { color: #fbbf24; }
       .dp-err { color: #f87171; }
       .dp-scroll { max-height: 170px; overflow-y: auto; }
+      .dp-cand-table td { vertical-align: top; }
+      .dp-cand-label { font-weight: 600; color: var(--text-main, #e8edf5); }
+      .dp-cand-note { font-size: 9.5px; color: var(--text-faint, #5f6b7f); line-height: 1.4; }
+      /* A better cut than the current orientation is the reason to look at the
+         table at all, so it is the one thing that gets colour. */
+      .dp-better { color: var(--accent-green, #22c55e); font-weight: 700; }
+      .dp-undrillable { opacity: 0.55; }
+      .dp-undrillable .dp-cand-note { color: #fbbf24; }
+      .dp-apply { padding: 2px 8px; font-size: 10px; }
+      .dp-apply:disabled { opacity: 0.4; cursor: not-allowed; }
       .dp-actions { display: flex; gap: 6px; margin: 14px 0 4px; }
       .dp-actions .btn-small { flex: 1; }
     `;
@@ -345,6 +355,13 @@ export class DepthPlannerPanel {
         const offset = q('#dp-convention').value === 'plus90' ? -90 : 90;
         q('#dp-strike').value = round(((dd + offset) % 360 + 360) % 360, 1);
       }
+    });
+
+    // The suggestions table is rebuilt on every recompute, so its Apply buttons
+    // are handled by delegation on the (stable) results container.
+    this.resultsEl.addEventListener('click', (e) => {
+      const btn = e.target.closest('.dp-apply');
+      if (btn && !btn.disabled) this.applySuggestion(Number(btn.dataset.cand));
     });
 
     // Every input recomputes, debounced, so the 3D tracks typing without
@@ -619,6 +636,8 @@ export class DepthPlannerPanel {
         </table>
       </div>
 
+      ${this.suggestionsHtml(r)}
+
       ${projected.length ? `
         <div class="dp-section-title" style="margin-top:12px;">Trench metre &rarr; downhole depth</div>
         ${compression ? `<div class="dp-note">Each trench metre &asymp; <b>${compression.toFixed(2)} m</b> of core.</div>` : ''}
@@ -631,6 +650,82 @@ export class DepthPlannerPanel {
     `;
 
     this.renderCalibration(r);
+  }
+
+  /**
+   * Holes worth drilling into this zone, each optimal for a stated objective.
+   *
+   * The current orientation is shown alongside them so the comparison is
+   * explicit -- the useful output is usually "your hole is fine but 8 degrees
+   * off", not a bare list of alternatives.
+   */
+  suggestionsHtml(r) {
+    const s = r.suggestions;
+    if (!s || !s.candidates.length) {
+      return `
+        <div class="dp-section-title" style="margin-top:12px;">Suggested holes</div>
+        <div class="dp-note">No orientation from this collar cuts the zone at
+        ${s ? s.bounds.minAngle : 30}° or better within the depth budget. Try moving the
+        collar, or widen the limits above.</div>`;
+    }
+
+    const current = r.intersectionAngleDeg;
+
+    const rows = s.candidates.map((c, i) => {
+      const better = c.angle > current + 0.5;
+      return `
+        <tr class="${c.drillable ? '' : 'dp-undrillable'}">
+          <td>
+            <div class="dp-cand-label">${c.label}</div>
+            <div class="dp-cand-note">${c.note}</div>
+          </td>
+          <td class="dp-num">${Math.round(c.azimuth)}°/${Math.round(c.dip)}°</td>
+          <td class="dp-num ${better ? 'dp-better' : ''}">${c.angle.toFixed(0)}°</td>
+          <td class="dp-num">${c.topDepth.toFixed(0)}</td>
+          <td class="dp-num">${c.eoh ?? '—'}</td>
+          <td><button class="btn-small dp-apply" data-cand="${i}"
+                ${c.drillable ? '' : 'disabled title="Outside the drillable dip band"'}>Apply</button></td>
+        </tr>`;
+    }).join('');
+
+    return `
+      <div class="dp-section-title" style="margin-top:12px;">Suggested holes</div>
+      <div class="dp-note">
+        Your hole cuts at <b>${current.toFixed(0)}°</b>. ${s.searched} orientations searched
+        within ${s.bounds.minDip}–${s.bounds.maxDip}° dip.
+        <b>Apply</b> writes an orientation into the form above and redraws the 3D view.
+      </div>
+      <div class="dp-scroll">
+        <table class="dp-table dp-cand-table">
+          <thead>
+            <tr>
+              <th>Objective</th><th class="dp-num">Azi/Dip</th><th class="dp-num">Cut</th>
+              <th class="dp-num">Top</th><th class="dp-num">EOH</th><th></th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`;
+  }
+
+  /** Write a suggested orientation into the hole fields and recompute. */
+  applySuggestion(index) {
+    const s = this.result && this.result.suggestions;
+    if (!s || !s.candidates[index]) return;
+    const c = s.candidates[index];
+
+    const az = this.container.querySelector('#dp-azimuth');
+    const dip = this.container.querySelector('#dp-holedip');
+    az.value = round(c.azimuth, 1);
+    dip.value = round(c.dip, 1);
+
+    this.recompute();
+    // `toast` is a manager object, not a callable -- see components/toast.js.
+    if (window.toast) {
+      window.toast.success(
+        `Applied ${Math.round(c.azimuth)}°/${Math.round(c.dip)}° — cuts at ${c.angle.toFixed(0)}°`
+      );
+    }
   }
 
   renderCalibration(r) {
@@ -683,6 +778,18 @@ export class DepthPlannerPanel {
       `Collar elevation moves the target ${Math.abs(r.elevationSensitivity).toFixed(2)} m per metre.`
     ];
 
+    if (r.suggestions && r.suggestions.candidates.length) {
+      lines.push('', 'SUGGESTED ORIENTATIONS', '  (objective / azi / dip / cut angle / zone top / EOH)');
+      for (const c of r.suggestions.candidates) {
+        lines.push(
+          `  ${c.label.padEnd(52)} ${String(Math.round(c.azimuth)).padStart(3)}° ` +
+          `${String(Math.round(c.dip)).padStart(2)}°  ${c.angle.toFixed(0).padStart(3)}°  ` +
+          `${c.topDepth.toFixed(1).padStart(6)} m  ${String(c.eoh ?? '—').padStart(4)} m` +
+          (c.drillable ? '' : '   [outside drillable dip band]')
+        );
+      }
+    }
+
     if (r.projected.length) {
       lines.push('', 'TRENCH METRE -> DOWNHOLE DEPTH');
       for (const s of r.projected) {
@@ -693,8 +800,8 @@ export class DepthPlannerPanel {
 
     const text = lines.join('\n');
     navigator.clipboard.writeText(text).then(
-      () => { if (window.toast) window.toast('Plan copied to clipboard'); },
-      () => { if (window.toast) window.toast('Could not copy to clipboard'); }
+      () => { if (window.toast) window.toast.success('Plan copied to clipboard'); },
+      () => { if (window.toast) window.toast.error('Could not copy to clipboard'); }
     );
   }
 

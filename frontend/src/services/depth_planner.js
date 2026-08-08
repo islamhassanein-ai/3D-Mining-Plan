@@ -511,6 +511,215 @@ export function drillingProposal(plan, envelope, options = {}) {
 }
 
 /**
+ * The orientation that cuts the zone dead-on: the hole is driven straight down
+ * the plane's own normal, so the intersection angle is 90 degrees and the core
+ * length equals the true thickness.
+ *
+ * Solving d = -n gives it in closed form -- no search needed:
+ *
+ *     azimuth  = dip direction + 180   (drill back INTO the dip, i.e. up-dip)
+ *     dip      = 90 - zone dip          (below horizontal)
+ *
+ * The catch is drillability, and it bites at both ends. A steep zone demands a
+ * flat hole -- a 70-degree zone wants a 20-degree hole, which is not something
+ * a surface rig will drill straight. So this returns the geometric ideal and
+ * lets the caller decide whether it is reachable.
+ */
+export function perpendicularOrientation(plane) {
+  return {
+    azimuth: ((num(plane.dipDirection) + 180) % 360 + 360) % 360,
+    dip: 90 - num(plane.dip)
+  };
+}
+
+/** Fraction of the downhole length that is true thickness: 1.0 = dead-on. */
+function cutQuality(angleDeg) {
+  return Math.sin(angleDeg * DEG);
+}
+
+/**
+ * Score a single orientation. Kept light -- no sensitivity envelope -- because
+ * the grid search calls it hundreds of times; the full envelope is computed
+ * once, afterwards, only for the handful of candidates actually returned.
+ */
+function evaluateOrientation({ collar, azimuth, dipBelow, plane, top, base, dipDelta = 5 }) {
+  const hole = { azimuth, dip: -Math.abs(dipBelow) };
+  const plan = planZone({ collar, hole, plane, top, base });
+
+  if (plan.top.parallel || !Number.isFinite(plan.top.depth)) return null;
+  if (plan.top.depth <= 0) return null;                       // behind the collar
+  if (plan.base && !Number.isFinite(plan.base.depth)) return null;
+
+  const deepest = plan.base ? Math.max(plan.top.depth, plan.base.depth) : plan.top.depth;
+
+  // Cheap worst-case depth, for the budget filter. Only the dip is perturbed:
+  // it is the dominant control on intersection depth by roughly an order of
+  // magnitude (see the sensitivity tests), so two extra evaluations buy most of
+  // the accuracy of the full seven-row envelope at a fraction of the cost --
+  // which matters when this runs across a few thousand grid points per redraw.
+  let worstDeep = deepest;
+  for (const delta of [-dipDelta, dipDelta]) {
+    const perturbed = planZone({
+      collar, hole, plane: { ...plane, dip: clamp(plane.dip + delta, 0, 90) }, top, base
+    });
+    for (const hit of [perturbed.top, perturbed.base]) {
+      if (hit && Number.isFinite(hit.depth)) worstDeep = Math.max(worstDeep, hit.depth);
+    }
+  }
+
+  return {
+    azimuth,
+    dip: dipBelow,
+    topDepth: plan.top.depth,
+    baseDepth: plan.base ? plan.base.depth : null,
+    angle: plan.intersectionAngleDeg,
+    coreLength: plan.coreLength,
+    trueThickness: plan.trueThickness,
+    deepest,
+    worstDeep
+  };
+}
+
+/**
+ * Propose holes worth drilling into this zone from this collar.
+ *
+ * Rather than collapsing everything into one opaque ranking, each suggestion is
+ * optimal for a stated objective, and every candidate carries the raw numbers
+ * that decided it. A geologist trading intersection quality against metres
+ * drilled needs to see both, not a score out of ten -- and the right trade
+ * depends on rig cost and access, neither of which this tool knows.
+ *
+ * Drillability bounds are real constraints, not preferences: below about 45
+ * degrees a surface hole wanders badly, and above about 85 it is effectively
+ * vertical with no azimuth control. Orientations outside the bounds are still
+ * reported when they are the geometric ideal, but flagged as such.
+ */
+export function suggestHoles({ collar, plane, top, base, currentAzimuth = null, options = {} }) {
+  const minDip = options.minDip ?? 45;
+  const maxDip = options.maxDip ?? 85;
+  const dipStep = options.dipStep ?? 1;
+  const azimuthStep = options.azimuthStep ?? 5;
+  const minAngle = options.minAngle ?? 30;
+  const maxEoh = options.maxEoh ?? 300;
+  const qualityWeight = options.qualityWeight ?? 0.65;
+  const eohMargin = options.eohMargin ?? 15;
+
+  if (!Number.isFinite(num(plane.dip)) || !Number.isFinite(num(plane.dipDirection))) return null;
+
+  const dipDelta = options.dipDelta ?? 5;
+  const evaluate = (azimuth, dipBelow) =>
+    evaluateOrientation({ collar, azimuth, dipBelow, plane, top, base, dipDelta });
+
+  const withinBudget = (hit) => hit.worstDeep + eohMargin <= maxEoh;
+
+  const grid = [];
+  for (let az = 0; az < 360; az += azimuthStep) {
+    for (let dip = minDip; dip <= maxDip; dip += dipStep) {
+      const hit = evaluate(az, dip);
+      if (!hit) continue;
+      if (hit.angle < minAngle) continue;
+      if (!withinBudget(hit)) continue;
+      grid.push(hit);
+    }
+  }
+
+  const ideal = perpendicularOrientation(plane);
+  const idealDrillable = ideal.dip >= minDip && ideal.dip <= maxDip;
+  const idealHit = evaluate(ideal.azimuth, ideal.dip);
+
+  // The ideal is off-grid, so it has to join the pool the superlatives are
+  // chosen from -- otherwise "Shallowest" can be beaten by the perpendicular
+  // row sitting right next to it in the same table.
+  const pool = [...grid];
+  if (idealHit && idealDrillable && withinBudget(idealHit)) pool.push(idealHit);
+
+  const candidates = [];
+  const add = (label, hit, note) => {
+    if (!hit) return;
+    // Two objectives often land on the same orientation; say so once.
+    const key = `${hit.azimuth.toFixed(2)}/${hit.dip.toFixed(2)}`;
+    const existing = candidates.find(c => c.key === key);
+    if (existing) {
+      existing.label += ` + ${label}`;
+      return;
+    }
+    candidates.push({ ...hit, key, label, note: note || '' });
+  };
+
+  // 1. The geometric ideal, reported whether or not a rig will drill it -- an
+  //    undrillable ideal still tells the geologist what they are giving up.
+  if (idealHit && idealHit.topDepth > 0) {
+    add(
+      'Perpendicular cut',
+      idealHit,
+      idealDrillable
+        ? 'Core length equals true thickness.'
+        : `Ideal geometry, but a ${ideal.dip.toFixed(0)}° hole is outside the ${minDip}–${maxDip}° drillable band.`
+    );
+  }
+
+  if (pool.length) {
+    // 2. Cheapest hole that still cuts the zone acceptably.
+    const shallowest = pool.reduce((a, b) => (b.deepest < a.deepest ? b : a));
+    add('Shallowest', shallowest, `Least metres drilled at ${minAngle}°+ intersection.`);
+
+    // 3. Best cut inside the drillable band.
+    const bestAngle = pool.reduce((a, b) => (b.angle > a.angle ? b : a));
+    add('Best angle (drillable)', bestAngle, 'Closest to perpendicular a rig will actually drill.');
+
+    // 4. The compromise. The weighting is a heuristic and is labelled as one --
+    //    both inputs are shown on every row so it can be overruled by eye.
+    const scored = pool.map(h => ({
+      ...h,
+      score: qualityWeight * cutQuality(h.angle)
+        + (1 - qualityWeight) * (1 - clamp((h.worstDeep + eohMargin) / maxEoh, 0, 1))
+    }));
+    const balanced = scored.reduce((a, b) => (b.score > a.score ? b : a));
+    add('Balanced', balanced, `${Math.round(qualityWeight * 100)}% cut quality, ${Math.round((1 - qualityWeight) * 100)}% depth.`);
+
+    // 5. If access fixes the azimuth, the best dip along it.
+    if (Number.isFinite(num(currentAzimuth))) {
+      const az = ((Math.round(num(currentAzimuth) / azimuthStep) * azimuthStep) % 360 + 360) % 360;
+      const sameAz = grid.filter(h => h.azimuth === az);
+      if (sameAz.length) {
+        const best = sameAz.reduce((a, b) => (b.angle > a.angle ? b : a));
+        add('Best on current azimuth', best, 'Keeps the planned access; only the dip changes.');
+      }
+    }
+  }
+
+  // Flesh out the survivors with the full envelope and a real EOH.
+  for (const c of candidates) {
+    const hole = { azimuth: c.azimuth, dip: -Math.abs(c.dip) };
+    const plan = planZone({ collar, hole, plane, top, base });
+    const envelope = sensitivity({ collar, hole, plane, top, base }, options);
+    const proposal = drillingProposal(plan, envelope, options);
+    c.eoh = proposal ? proposal.eoh : null;
+    c.startLogging = proposal ? proposal.startLogging : null;
+    c.envelope = envelope ? { min: envelope.min, max: envelope.max } : null;
+    c.drillable = c.dip >= minDip && c.dip <= maxDip;
+  }
+
+  // The grid filtered on a dip-only estimate; the real EOH also absorbs dip
+  // direction and collar elevation. Enforce the budget against that final
+  // number so a stated limit is never quietly exceeded. The perpendicular row
+  // is exempt: it is reference geometry, not a recommendation to drill.
+  const affordable = candidates.filter(
+    c => c.label.includes('Perpendicular') || !Number.isFinite(c.eoh) || c.eoh <= maxEoh
+  );
+
+  for (const c of affordable) delete c.key;
+  affordable.sort((a, b) => b.angle - a.angle);
+
+  return {
+    ideal: { ...ideal, drillable: idealDrillable },
+    candidates: affordable,
+    searched: grid.length,
+    bounds: { minDip, maxDip, minAngle, maxEoh }
+  };
+}
+
+/**
  * One call that runs the whole chain, so the panel and any test drive exactly
  * the same path.
  */
@@ -526,5 +735,12 @@ export function computePlan({
     ? calibrate({ observedDepth, collar, hole, plane, anchor: top })
     : null;
 
-  return { ...plan, envelope, proposal, projected, calibration };
+  // Opt-out rather than opt-in: the whole point of the planner is deciding what
+  // to drill next, and a geologist who has typed an orientation still benefits
+  // from seeing that a different one cuts the same zone at 90 degrees.
+  const suggestions = options.suggest === false
+    ? null
+    : suggestHoles({ collar, plane, top, base, currentAzimuth: hole.azimuth, options });
+
+  return { ...plan, envelope, proposal, projected, calibration, suggestions };
 }
