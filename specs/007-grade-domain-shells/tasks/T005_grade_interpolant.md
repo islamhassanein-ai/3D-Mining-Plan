@@ -8,29 +8,23 @@
 | **Priority** | P0 |
 | **Dependencies** | T004 |
 | **Complexity** | Large |
-| **Status** | **BLOCKED — Q1, Q4** |
+| **Status** | **DONE** |
 
-> ## Blocked: do not implement yet
+> **Unblocked by D6 and D7**, both of which were design questions rather than
+> value questions:
 >
-> Two unresolved questions in [`../OPEN_QUESTIONS.md`](../OPEN_QUESTIONS.md):
+> - **D6** — FC is geometry-only. `sample_type_weights` is now a **required
+>   argument** with no default; a type present in the data but absent from the
+>   mapping raises. A forgotten type is a forgotten decision.
+> - **D7** — `SearchEllipsoid` has **no default ranges and no default
+>   orientation**. Every run states them.
+> - **D1** — `min_samples` guard and `nan` output implemented as specified.
+> - **D2** — `WeightKernel` protocol with `inverse_distance_kernel`; the kernel
+>   is injectable and tested with a custom one.
 >
-> **Q1 — trench influence.** The `{"TR": 0.5, "CH": 0.5, "FC": 0.5}` default
-> written below is a **placeholder with no geological basis in this deposit**.
-> Do not treat it as approved. What *is* settled: the influence must be
-> configurable, so `sample_type_weights` stays in the signature exactly as
-> specified. Only the default value is open.
->
-> **Q4 — structural orientation.** Whether dip *direction* is a separate input,
-> and whether the ranges and orientation should have defaults at all or be
-> required, is undecided. `SearchEllipsoid` hard-codes nothing either way, but
-> the defaults below may change to "required, no default".
->
-> Also binding here, and **not** open:
-> - **D1** — the `min_samples` guard and `nan` output are the approved
->   no-extrapolation behaviour. Do not relax them.
-> - **D2** — the weighting kernel must be injectable so an RBF engine can
->   replace IDW later without touching grid construction, search, or the `nan`
->   policy. See AC-9.
+> Adel's actual strike, dip and ranges are still needed to *run* this, and the
+> TR weight is with the expert team — but neither blocks the implementation,
+> since both are inputs.
 
 ---
 
